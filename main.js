@@ -35,7 +35,7 @@ wss.on("connection", function (ws, req) {
       const messageData = JSON.parse(messageString);
       console.log('Received JSON data:', messageData);
 
-      // Xử lý dữ liệu JSON và broadcast (nếu cần)
+      // Xử lý dữ liệu JSON và broadcast (nếu cần)yhg
       broadcast(ws, JSON.stringify(messageData), false);
     } catch (e) {
       console.log('Received string data:', data.toString());
