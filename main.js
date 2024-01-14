@@ -9,13 +9,14 @@ const serverPort = process.env.PORT || 3000;
 const server = http.createServer(app);
 
 const wss = process.env.NODE_ENV === "production"
-            ? new WebSocket.Server({ server })
-            : new WebSocket.Server({ port: 5001 });
+  ? new WebSocket.Server({ server })
+  : new WebSocket.Server({ port: 5001 });
 
 server.listen(serverPort);
 console.log(`Server started on port ${serverPort} in stage ${process.env.NODE_ENV}`);
 
 const connectedUsers = new Map();
+const usersInChat = new Map();
 let keepAliveId;
 
 wss.on("connection", function (ws, req) {
@@ -23,22 +24,23 @@ wss.on("connection", function (ws, req) {
   const userIPAddress = req.socket.remoteAddress;
   connectedUsers.set(userID, { ip: userIPAddress, ws: ws });
 
-  updateAllClientsWithUserList();
-
   ws.on("message", (data) => {
     try {
-      const messageString = data.toString();
-      const messageData = JSON.parse(messageString);
-      console.log('Received JSON data:', messageData);
+      const messageData = JSON.parse(data.toString());
+      if (messageData.command === 'join_chat') {
+        // Thêm người dùng vào danh sách người dùng trong chat
+        usersInChat.set(userID, { ip: userIPAddress, ws: ws });
+        updateAllClientsWithUserList();
+      }
       broadcast(ws, JSON.stringify(messageData), false);
     } catch (e) {
-      console.log('Received string data:', data.toString());
-      broadcast(ws, data.toString(), false);
+      console.log('Error:', e);
     }
   });
 
   ws.on("close", () => {
     connectedUsers.delete(userID);
+    usersInChat.delete(userID);
     updateAllClientsWithUserList();
   });
 
@@ -56,7 +58,7 @@ function generateUniqueID() {
 }
 
 function updateAllClientsWithUserList() {
-  const userList = Array.from(connectedUsers.values()).map(user => user.ip);
+  const userList = Array.from(usersInChat.values()).map(user => user.ip);
   broadcast(null, JSON.stringify({ command: 'update_user_list', users: userList }), true);
 }
 
