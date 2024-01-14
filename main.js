@@ -1,7 +1,7 @@
 const http = require("http");
 const express = require("express");
-const app = express();
 const WebSocket = require("ws");
+const app = express();
 
 app.use(express.static("public"));
 
@@ -15,27 +15,21 @@ const wss = process.env.NODE_ENV === "production"
 server.listen(serverPort);
 console.log(`Server started on port ${serverPort} in stage ${process.env.NODE_ENV}`);
 
+const connectedUsers = new Map();
 let keepAliveId;
 
 wss.on("connection", function (ws, req) {
-  console.log("Connection Opened");
-  console.log("Client size: ", wss.clients.size);
+  const userID = generateUniqueID();
+  const userIPAddress = req.socket.remoteAddress;
+  connectedUsers.set(userID, { ip: userIPAddress, ws: ws });
 
-  if (wss.clients.size === 1) {
-    console.log("First connection. Starting keepalive");
-    keepServerAlive();
-  }
+  updateAllClientsWithUserList();
 
   ws.on("message", (data) => {
     try {
-      // Chuyển đổi Buffer thành chuỗi
       const messageString = data.toString();
-
-      // Phân tích cú pháp chuỗi thành JSON (nếu dữ liệu đến là JSON)
       const messageData = JSON.parse(messageString);
       console.log('Received JSON data:', messageData);
-
-      // Xử lý dữ liệu JSON và broadcast (nếu cần)yhg
       broadcast(ws, JSON.stringify(messageData), false);
     } catch (e) {
       console.log('Received string data:', data.toString());
@@ -43,26 +37,37 @@ wss.on("connection", function (ws, req) {
     }
   });
 
-  ws.on("close", (data) => {
-    console.log("Closing connection");
-
-    if (wss.clients.size === 0) {
-      console.log("Last client disconnected, stopping keepAlive interval");
-      clearInterval(keepAliveId);
-    }
+  ws.on("close", () => {
+    connectedUsers.delete(userID);
+    updateAllClientsWithUserList();
   });
+
+  if (wss.clients.size === 1) {
+    keepServerAlive();
+  }
 });
 
-// Implement broadcast function
-const broadcast = (ws, message, includeSelf) => {
+wss.on("close", () => {
+  clearInterval(keepAliveId);
+});
+
+function generateUniqueID() {
+  return Math.random().toString(36).substr(2, 9);
+}
+
+function updateAllClientsWithUserList() {
+  const userList = Array.from(connectedUsers.values()).map(user => user.ip);
+  broadcast(null, JSON.stringify({ command: 'update_user_list', users: userList }), true);
+}
+
+function broadcast(senderWs, message, includeSelf) {
   wss.clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN && (includeSelf || client !== ws)) {
+    if (client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
       client.send(message);
     }
   });
-};
+}
 
-// Sends a ping message to all connected clients every 50 seconds
 const keepServerAlive = () => {
   keepAliveId = setInterval(() => {
     wss.clients.forEach((client) => {
