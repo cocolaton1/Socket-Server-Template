@@ -21,15 +21,13 @@ let keepAliveId;
 
 wss.on("connection", function (ws, req) {
   const userID = generateUniqueID();
-  const userIPAddress = req.socket.remoteAddress;
-  connectedUsers.set(userID, { ip: userIPAddress, ws: ws });
 
   ws.on("message", (data) => {
     try {
       const messageData = JSON.parse(data.toString());
       if (messageData.command === 'join_chat') {
-        // Thêm người dùng vào danh sách người dùng trong chat
-        usersInChat.set(userID, { ip: userIPAddress, ws: ws });
+        // Lưu tên người dùng và thông tin kết nối
+        usersInChat.set(userID, { username: messageData.sender, ws: ws });
         updateAllClientsWithUserList();
       }
       broadcast(ws, JSON.stringify(messageData), false);
@@ -58,7 +56,7 @@ function generateUniqueID() {
 }
 
 function updateAllClientsWithUserList() {
-  const userList = Array.from(usersInChat.values()).map(user => user.ip);
+  const userList = Array.from(usersInChat.values()).map(user => user.username);
   broadcast(null, JSON.stringify({ command: 'update_user_list', users: userList }), true);
 }
 
