@@ -48,28 +48,16 @@ function generateUniqueID() {
 }
 
 function handleMessage(ws, data, userID) {
-    if (typeof data === 'string') {
-        // Xử lý dữ liệu dạng chuỗi (JSON)
-        try {
-            const messageData = JSON.parse(data);
-            // Thêm logic của bạn ở đây để xử lý dữ liệu chuỗi
-            broadcast(ws, JSON.stringify(messageData), false);
-        } catch (e) {
-            console.error('Error parsing JSON:', e);
+    try {
+        const messageData = JSON.parse(data.toString());
+        if (messageData.command === 'join_chat') {
+            usersInChat.set(userID, { username: messageData.sender, ws: ws });
+            updateAllClientsWithUserList();
         }
-    } else {
-        // Xử lý dữ liệu nhị phân
-        // Chuyển tiếp dữ liệu nhị phân tới tất cả clients khác mà không thay đổi
-        broadcastBinary(ws, data, false);
+        broadcast(ws, JSON.stringify(messageData), false);
+    } catch (e) {
+        console.error('Error:', e);
     }
-}
-
-function broadcastBinary(senderWs, binaryData, includeSelf) {
-    wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
-            client.send(binaryData); // Gửi dữ liệu nhị phân mà không cần chuyển đổi
-        }
-    });
 }
 
 function handleDisconnect(userID) {
