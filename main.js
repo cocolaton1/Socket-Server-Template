@@ -6,71 +6,84 @@ const app = express();
 app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
+const WSS_PORT = process.env.WSS_PORT || 5001;
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server }); // Attach WebSocket server directly to the HTTP server
+
+const wss = new WebSocket.Server({ noServer: true });
+server.on('upgrade', (request, socket, head) => {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+    });
+});
 
 server.listen(PORT, () => {
     console.log(`Server started on port ${PORT} in stage ${process.env.NODE_ENV}`);
 });
 
 const usersInChat = new Map();
+let keepAliveId;
 
-// Simplify connection event handling
-wss.on("connection", (ws, request) => {
+wss.on("connection", function (ws) {
     const userID = generateUniqueID();
-    usersInChat.set(userID, { ws });
 
     ws.on("message", (data) => {
-        handleMessage(data, userID);
+        handleMessage(ws, data, userID);
     });
 
     ws.on("close", () => {
-        usersInChat.delete(userID);
-        updateAllClientsWithUserList();
+        handleDisconnect(userID);
     });
 
-    ws.on("pong", () => {
-        ws.isAlive = true; // Use 'pong' event to mark the connection as alive
-    });
-
-    keepServerAlive();
+    if (wss.clients.size === 1) {
+        keepServerAlive();
+    }
 });
 
-// Ping connected clients to check if they are still alive
-function keepServerAlive() {
-    setInterval(() => {
-        wss.clients.forEach((ws) => {
-            if (!ws.isAlive) return ws.terminate();
-            ws.isAlive = false;
-            ws.ping(null, false, true);
-        });
-    }, 30000); // Adjusted interval to 30 seconds
-}
+wss.on("close", () => {
+    clearInterval(keepAliveId);
+});
 
 function generateUniqueID() {
     return Math.random().toString(36).substr(2, 9);
 }
 
-function handleMessage(data, userID) {
-    const messageData = JSON.parse(data.toString());
-    if (messageData.command === 'join_chat') {
-        const user = usersInChat.get(userID);
-        user.username = messageData.sender;
-        usersInChat.set(userID, user);
-        updateAllClientsWithUserList();
+function handleMessage(ws, data, userID) {
+    try {
+        const messageData = JSON.parse(data.toString());
+        if (messageData.command === 'join_chat') {
+            usersInChat.set(userID, { username: messageData.sender, ws: ws });
+            updateAllClientsWithUserList();
+        }
+        broadcast(ws, JSON.stringify(messageData), false);
+    } catch (e) {
+        console.error('Error:', e);
     }
-    broadcast(JSON.stringify(messageData), userID);
+}
+
+function handleDisconnect(userID) {
+    usersInChat.delete(userID);
+    updateAllClientsWithUserList();
 }
 
 function updateAllClientsWithUserList() {
-    const userList = Array.from(usersInChat.values()).map(user => user.username).filter(username => username);
-    broadcast(JSON.stringify({ command: 'update_user_list', users: userList }));
+    const userList = Array.from(usersInChat.values()).map(user => user.username);
+    broadcast(null, JSON.stringify({ command: 'update_user_list', users: userList }), true);
 }
 
-function broadcast(message, senderUserID = null) {
-    usersInChat.forEach((user, userID) => {
-        if (user.ws.readyState === WebSocket.OPEN && (senderUserID !== userID || senderUserID === null)) {
-            user.ws.send(message);
+function broadcast(senderWs, message, includeSelf) {
+    wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
+            client.send(message);
         }
     });
 }
+
+const keepServerAlive = () => {
+    keepAliveId = setInterval(() => {
+        wss.clients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.ping();
+            }
+        });
+    }, 30000); // Adjusted interval to 30 seconds
+};
