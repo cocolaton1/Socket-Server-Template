@@ -24,20 +24,20 @@ const usersInChat = new Map();
 let keepAliveId;
 
 wss.on("connection", function (ws) {
-    ws.binaryType = 'nodebuffer'; // Đảm bảo nhận binary data dưới dạng Buffer
+    const userID = generateUniqueID();
 
-    ws.on("message", function (data) {
-        if (data instanceof Buffer) {
-            // Broadcast dữ liệu binary đến tất cả clients
-            broadcastBinaryData(data);
-        } else {
-            // Xử lý dữ liệu text
-            const userID = generateUniqueID(); // Đảm bảo bạn tạo ID người dùng ở đâu đó phù hợp
-            handleMessage(ws, data, userID);
-        }
+    ws.on("message", (data) => {
+        handleMessage(ws, data, userID);
     });
-});
 
+    ws.on("close", () => {
+        handleDisconnect(userID);
+    });
+
+    if (wss.clients.size === 1) {
+        keepServerAlive();
+    }
+});
 
 wss.on("close", () => {
     clearInterval(keepAliveId);
@@ -59,15 +59,6 @@ function handleMessage(ws, data, userID) {
         console.error('Error:', e);
     }
 }
-
-function broadcastBinaryData(binaryData) {
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(binaryData); // Gửi dữ liệu binary tới mỗi client
-        }
-    });
-}
-
 
 function handleDisconnect(userID) {
     usersInChat.delete(userID);
