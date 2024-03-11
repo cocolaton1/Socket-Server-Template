@@ -49,30 +49,16 @@ function generateUniqueID() {
 
 function handleMessage(ws, data, userID) {
     try {
-        // Thử giả định data là JSON và parse nó
         const messageData = JSON.parse(data.toString());
-        
-        // Xử lý message như trước nếu nó là JSON
         if (messageData.command === 'join_chat') {
             usersInChat.set(userID, { username: messageData.sender, ws: ws });
             updateAllClientsWithUserList();
         }
-
-        // Broadcast dữ liệu JSON
         broadcast(ws, JSON.stringify(messageData), false);
     } catch (e) {
-        // Nếu parse JSON thất bại, giả định dữ liệu là binary và broadcast nó
-        if (data instanceof Buffer) {
-            // Đây là phần mở rộng cho việc xử lý dữ liệu binary
-            console.log('Handling binary data');
-            broadcast(ws, data, false); // Broadcast dữ liệu nhị phân
-        } else {
-            // Nếu dữ liệu không phải là binary, log lỗi
-            console.error('Error:', e);
-        }
+        console.error('Error:', e);
     }
 }
-
 
 function handleDisconnect(userID) {
     usersInChat.delete(userID);
