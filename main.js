@@ -59,7 +59,7 @@ function handleMessage(ws, data, userID) {
         console.error('Error:', e);
     }
 }
-
+//
 function handleDisconnect(userID) {
     usersInChat.delete(userID);
     updateAllClientsWithUserList();
