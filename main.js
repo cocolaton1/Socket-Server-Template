@@ -32,6 +32,7 @@ wss.on("connection", function (ws) {
 
     ws.on("close", () => {
         handleDisconnect(userID);
+        ws.removeAllListeners();
     });
 
     if (wss.clients.size === 1) {
