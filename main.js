@@ -49,18 +49,21 @@ function generateUniqueID() {
 }
 
 function handleMessage(ws, data, userID) {
-    try {
+    if (Buffer.isBuffer(data)) {
+        // Giả sử data là dữ liệu file nhị phân, chuyển tiếp nó đến các clients khác
+        console.log('Received binary data (file), forwarding...');
+        broadcast(ws, data, false); // Chuyển false nếu bạn không muốn người gửi nhận lại file của chính họ
+    } else {
+        // Xử lý dữ liệu text như trước
         const messageData = JSON.parse(data.toString());
         if (messageData.command === 'join_chat') {
             usersInChat.set(userID, { username: messageData.sender, ws: ws });
             updateAllClientsWithUserList();
         }
         broadcast(ws, JSON.stringify(messageData), false);
-    } catch (e) {
-        console.error('Error:', e);
     }
 }
-//
+
 function handleDisconnect(userID) {
     usersInChat.delete(userID);
     updateAllClientsWithUserList();
@@ -74,7 +77,13 @@ function updateAllClientsWithUserList() {
 function broadcast(senderWs, message, includeSelf) {
     wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
-            client.send(message);
+            // Gửi dữ liệu nhị phân nếu message là instance của Buffer
+            if (Buffer.isBuffer(message)) {
+                client.send(message, { binary: true });
+            } else {
+                // Nếu không, giả sử đó là dữ liệu text và gửi như bình thường
+                client.send(message);
+            }
         }
     });
 }
