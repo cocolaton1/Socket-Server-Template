@@ -86,40 +86,30 @@ function broadcast(senderWs, message, includeSelf) {
 }
 
 function broadcastBinary(senderWs, data) {
-    // Tìm vị trí của dấu xuống dòng đầu tiên, nó phân tách phần JSON
-    const separatorIndex = data.indexOf('\n'.charCodeAt(0));
-    if (separatorIndex === -1) {
-        console.error('Invalid binary message format');
-        return;
-    }
+    // Giả định phần đầu tiên là JSON mô tả hành động, kết thúc bởi một dấu xuống dòng
+    const separatorIndex = data.indexOf(10); // Tìm vị trí của dấu xuống dòng (LF - line feed)
+    const actionData = data.slice(0, separatorIndex).toString(); // Lấy phần JSON
+    const imageData = data.slice(separatorIndex + 1); // Lấy phần dữ liệu hình ảnh
 
-    // Tách phần JSON mô tả hành động
-    const actionBuffer = data.slice(0, separatorIndex);
-    const actionString = actionBuffer.toString();
     let action;
     try {
-        action = JSON.parse(actionString);
-    } catch (e) {
-        console.error('Failed to parse action from binary message:', e);
+        action = JSON.parse(actionData); // Phân tích cú pháp JSON
+    } catch (error) {
+        console.error('Error parsing action data:', error);
         return;
     }
 
-    // Tách dữ liệu hình ảnh nhị phân còn lại
-    const imageData = data.slice(separatorIndex + 1);
+    // Kiểm tra hành động để xử lý hình ảnh hoặc broadcast nó
+    console.log('Received action:', action.action); // In hành động nhận được
 
-    // Xử lý tùy theo hành động được giải mã từ JSON
-    if (action.action === 'screenshot_result') {
-        console.log('Received screenshot data, broadcasting...');
-        // Phát lại dữ liệu hình ảnh đến các client khác
-        wss.clients.forEach((client) => {
-            if (client !== senderWs && client.readyState === WebSocket.OPEN) {
-                client.send(imageData, { binary: true });
-            }
-        });
-    } else {
-        console.log('Received binary data with unknown action:', action);
-    }
+    // Broadcast dữ liệu hình ảnh đến các clients khác (giả sử là hình ảnh)
+    wss.clients.forEach((client) => {
+        if (client !== senderWs && client.readyState === WebSocket.OPEN) {
+            client.send(imageData, { binary: true });
+        }
+    });
 }
+
 
 
 const keepServerAlive = () => {
