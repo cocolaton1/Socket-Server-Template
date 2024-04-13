@@ -6,6 +6,7 @@ const app = express();
 app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
+const WSS_PORT = process.env.WSS_PORT || 5001;
 const server = http.createServer(app);
 
 const wss = new WebSocket.Server({ noServer: true });
@@ -24,16 +25,9 @@ let keepAliveId;
 
 wss.on("connection", function (ws) {
     const userID = generateUniqueID();
-    usersInChat.set(userID, ws);
 
     ws.on("message", (data) => {
-        if (data instanceof Buffer) {
-            // Handle and broadcast binary data
-            broadcastBinary(ws, data);
-        } else {
-            // Handle text data
-            handleMessage(ws, data.toString(), userID);
-        }
+        handleMessage(ws, data, userID);
     });
 
     ws.on("close", () => {
@@ -54,9 +48,9 @@ function generateUniqueID() {
     return Math.random().toString(36).substr(2, 9);
 }
 
-function handleMessage(ws, message, userID) {
+function handleMessage(ws, data, userID) {
     try {
-        const messageData = JSON.parse(message);
+        const messageData = JSON.parse(data.toString());
         if (messageData.command === 'join_chat') {
             usersInChat.set(userID, { username: messageData.sender, ws: ws });
             updateAllClientsWithUserList();
@@ -66,7 +60,7 @@ function handleMessage(ws, message, userID) {
         console.error('Error:', e);
     }
 }
-
+//
 function handleDisconnect(userID) {
     usersInChat.delete(userID);
     updateAllClientsWithUserList();
@@ -84,33 +78,6 @@ function broadcast(senderWs, message, includeSelf) {
         }
     });
 }
-
-function broadcastBinary(senderWs, data) {
-    // Giả định phần đầu tiên là JSON mô tả hành động, kết thúc bởi một dấu xuống dòng
-    const separatorIndex = data.indexOf(10); // Tìm vị trí của dấu xuống dòng (LF - line feed)
-    const actionData = data.slice(0, separatorIndex).toString(); // Lấy phần JSON
-    const imageData = data.slice(separatorIndex + 1); // Lấy phần dữ liệu hình ảnh
-
-    let action;
-    try {
-        action = JSON.parse(actionData); // Phân tích cú pháp JSON
-    } catch (error) {
-        console.error('Error parsing action data:', error);
-        return;
-    }
-
-    // Kiểm tra hành động để xử lý hình ảnh hoặc broadcast nó
-    console.log('Received action:', action.action); // In hành động nhận được
-
-    // Broadcast dữ liệu hình ảnh đến các clients khác (giả sử là hình ảnh)
-    wss.clients.forEach((client) => {
-        if (client !== senderWs && client.readyState === WebSocket.OPEN) {
-            client.send(imageData, { binary: true });
-        }
-    });
-}
-
-
 
 const keepServerAlive = () => {
     keepAliveId = setInterval(() => {
