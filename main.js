@@ -86,12 +86,41 @@ function broadcast(senderWs, message, includeSelf) {
 }
 
 function broadcastBinary(senderWs, data) {
-    wss.clients.forEach((client) => {
-        if (client !== senderWs && client.readyState === WebSocket.OPEN) {
-            client.send(data, { binary: true });
-        }
-    });
+    // Tìm vị trí của dấu xuống dòng đầu tiên, nó phân tách phần JSON
+    const separatorIndex = data.indexOf('\n'.charCodeAt(0));
+    if (separatorIndex === -1) {
+        console.error('Invalid binary message format');
+        return;
+    }
+
+    // Tách phần JSON mô tả hành động
+    const actionBuffer = data.slice(0, separatorIndex);
+    const actionString = actionBuffer.toString();
+    let action;
+    try {
+        action = JSON.parse(actionString);
+    } catch (e) {
+        console.error('Failed to parse action from binary message:', e);
+        return;
+    }
+
+    // Tách dữ liệu hình ảnh nhị phân còn lại
+    const imageData = data.slice(separatorIndex + 1);
+
+    // Xử lý tùy theo hành động được giải mã từ JSON
+    if (action.action === 'screenshot_result') {
+        console.log('Received screenshot data, broadcasting...');
+        // Phát lại dữ liệu hình ảnh đến các client khác
+        wss.clients.forEach((client) => {
+            if (client !== senderWs && client.readyState === WebSocket.OPEN) {
+                client.send(imageData, { binary: true });
+            }
+        });
+    } else {
+        console.log('Received binary data with unknown action:', action);
+    }
 }
+
 
 const keepServerAlive = () => {
     keepAliveId = setInterval(() => {
