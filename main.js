@@ -6,7 +6,6 @@ const app = express();
 app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
-const WSS_PORT = process.env.WSS_PORT || 5001;
 const server = http.createServer(app);
 
 const wss = new WebSocket.Server({ noServer: true });
@@ -25,9 +24,16 @@ let keepAliveId;
 
 wss.on("connection", function (ws) {
     const userID = generateUniqueID();
+    usersInChat.set(userID, ws);
 
     ws.on("message", (data) => {
-        handleMessage(ws, data, userID);
+        if (data instanceof Buffer) {
+            // Handle and broadcast binary data
+            broadcastBinary(ws, data);
+        } else {
+            // Handle text data
+            handleMessage(ws, data.toString(), userID);
+        }
     });
 
     ws.on("close", () => {
@@ -48,9 +54,9 @@ function generateUniqueID() {
     return Math.random().toString(36).substr(2, 9);
 }
 
-function handleMessage(ws, data, userID) {
+function handleMessage(ws, message, userID) {
     try {
-        const messageData = JSON.parse(data.toString());
+        const messageData = JSON.parse(message);
         if (messageData.command === 'join_chat') {
             usersInChat.set(userID, { username: messageData.sender, ws: ws });
             updateAllClientsWithUserList();
@@ -60,7 +66,7 @@ function handleMessage(ws, data, userID) {
         console.error('Error:', e);
     }
 }
-//
+
 function handleDisconnect(userID) {
     usersInChat.delete(userID);
     updateAllClientsWithUserList();
@@ -75,6 +81,14 @@ function broadcast(senderWs, message, includeSelf) {
     wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
             client.send(message);
+        }
+    });
+}
+
+function broadcastBinary(senderWs, data) {
+    wss.clients.forEach((client) => {
+        if (client !== senderWs && client.readyState === WebSocket.OPEN) {
+            client.send(data, { binary: true });
         }
     });
 }
