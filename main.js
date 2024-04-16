@@ -21,8 +21,6 @@ server.listen(PORT, () => {
 });
 
 const usersInChat = new Map();
-const binaryDataUsers = new Set(); // Thêm một Set để quản lý user có khả năng nhận binary data
-
 let keepAliveId;
 
 wss.on("connection", function (ws) {
@@ -35,7 +33,6 @@ wss.on("connection", function (ws) {
     ws.on("close", () => {
         handleDisconnect(userID);
         ws.removeAllListeners();
-        binaryDataUsers.delete(userID); // Xóa userID khi user disconnect
     });
 
     if (wss.clients.size === 1) {
@@ -52,39 +49,18 @@ function generateUniqueID() {
 }
 
 function handleMessage(ws, data, userID) {
-    // Kiểm tra kiểu dữ liệu nhận được
-    if (typeof data === 'string') {
-        if (data === 'binary') {
-            binaryDataUsers.add(userID); // Thêm user vào Set khi nhận thông điệp 'binary'
-            return;
+    try {
+        const messageData = JSON.parse(data.toString());
+        if (messageData.command === 'join_chat') {
+            usersInChat.set(userID, { username: messageData.sender, ws: ws });
+            updateAllClientsWithUserList();
         }
-        try {
-            const messageData = JSON.parse(data);
-            if (messageData.command === 'join_chat') {
-                usersInChat.set(userID, { username: messageData.sender, ws: ws });
-                updateAllClientsWithUserList();
-            }
-            broadcast(ws, JSON.stringify(messageData), false);
-        } catch (e) {
-            console.error('Error:', e);
-        }
-    } else if (data instanceof Buffer) {
-        // Xử lý dữ liệu binary ở đây
-        broadcastBinary(data);
+        broadcast(ws, JSON.stringify(messageData), false);
+    } catch (e) {
+        console.error('Error:', e);
     }
 }
-
-
-function broadcastBinary(binaryData) {
-    binaryDataUsers.forEach(userId => {
-        const user = usersInChat.get(userId);
-        if (user && user.ws.readyState === WebSocket.OPEN) {
-            user.ws.send(binaryData);
-        }
-    });
-}
-
-
+//
 function handleDisconnect(userID) {
     usersInChat.delete(userID);
     updateAllClientsWithUserList();
@@ -98,11 +74,7 @@ function updateAllClientsWithUserList() {
 function broadcast(senderWs, message, includeSelf) {
     wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
-            if (binaryDataUsers.has(client._ultron.id)) {
-                client.send(message); // Gửi binary data nếu client có trong Set
-            } else {
-                client.send(message); // Gửi thông thường
-            }
+            client.send(message);
         }
     });
 }
