@@ -21,7 +21,7 @@ server.listen(PORT, () => {
 });
 
 const usersInChat = new Map();
-const specialUsers = new Map(); // New collection for "Binary Connect" users
+const specialUsers = new Map(); // Bộ sưu tập người dùng đặc biệt
 let keepAliveId;
 
 wss.on("connection", function (ws) {
@@ -51,14 +51,18 @@ function generateUniqueID() {
 
 function handleMessage(ws, data, userID) {
     try {
-        const messageData = JSON.parse(data.toString());
-        if (messageData.command === 'join_chat') {
-            usersInChat.set(userID, { username: messageData.sender, ws: ws });
-            updateAllClientsWithUserList();
-        } else if (messageData.command === 'Binary Connect') { // Checking for special message
-            specialUsers.set(userID, { username: messageData.sender, ws: ws }); // Add to special users array
+        if (data instanceof Buffer) { // Kiểm tra xem liệu dữ liệu có phải là nhị phân không
+            broadcastBinaryToSpecialUsers(data); // Chỉ broadcast cho những người dùng đặc biệt
+        } else {
+            const messageData = JSON.parse(data.toString());
+            if (messageData.command === 'Binary Connect') {
+                specialUsers.set(userID, { username: messageData.sender, ws: ws });
+            } else if (messageData.command === 'join_chat') {
+                usersInChat.set(userID, { username: messageData.sender, ws: ws });
+                updateAllClientsWithUserList();
+            }
+            broadcast(ws, JSON.stringify(messageData), false);
         }
-        broadcast(ws, JSON.stringify(messageData), false);
     } catch (e) {
         console.error('Error:', e);
     }
@@ -66,20 +70,27 @@ function handleMessage(ws, data, userID) {
 
 function handleDisconnect(userID) {
     usersInChat.delete(userID);
-    specialUsers.delete(userID); // Also remove from special users if present
+    specialUsers.delete(userID);
     updateAllClientsWithUserList();
 }
 
 function updateAllClientsWithUserList() {
     const userList = Array.from(usersInChat.values()).map(user => user.username);
-    const specialList = Array.from(specialUsers.values()).map(user => user.username); // Optionally, update clients with special users list
-    broadcast(null, JSON.stringify({ command: 'update_user_list', users: userList, specialUsers: specialList }), true);
+    broadcast(null, JSON.stringify({ command: 'update_user_list', users: userList }), true);
 }
 
 function broadcast(senderWs, message, includeSelf) {
     wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
             client.send(message);
+        }
+    });
+}
+
+function broadcastBinaryToSpecialUsers(data) {
+    specialUsers.forEach(user => {
+        if (user.ws.readyState === WebSocket.OPEN) {
+            user.ws.send(data);
         }
     });
 }
@@ -91,5 +102,5 @@ const keepServerAlive = () => {
                 client.ping();
             }
         });
-    }, 30000); // Adjusted interval to 30 seconds
+    }, 30000);
 };
