@@ -51,22 +51,25 @@ function generateUniqueID() {
 
 function handleMessage(ws, data, userID) {
     try {
-        if (data instanceof Buffer) { // Kiểm tra xem liệu dữ liệu có phải là nhị phân không
+        const messageData = JSON.parse(data.toString()); // Cố gắng parse dữ liệu như JSON
+        // Xử lý dữ liệu như JSON nếu parse thành công
+        if (messageData.command === 'Binary Connect') {
+            specialUsers.set(userID, { username: messageData.sender, ws: ws });
+        } else if (messageData.command === 'join_chat') {
+            usersInChat.set(userID, { username: messageData.sender, ws: ws });
+            updateAllClientsWithUserList();
+        }
+        broadcast(ws, JSON.stringify(messageData), false);
+    } catch (e) {
+        // Parse JSON thất bại, xử lý như là dữ liệu nhị phân
+        if (data instanceof Buffer) { // Thêm kiểm tra này nếu bạn muốn cẩn thận
             broadcastBinaryToSpecialUsers(data); // Chỉ broadcast cho những người dùng đặc biệt
         } else {
-            const messageData = JSON.parse(data.toString());
-            if (messageData.command === 'Binary Connect') {
-                specialUsers.set(userID, { username: messageData.sender, ws: ws });
-            } else if (messageData.command === 'join_chat') {
-                usersInChat.set(userID, { username: messageData.sender, ws: ws });
-                updateAllClientsWithUserList();
-            }
-            broadcast(ws, JSON.stringify(messageData), false);
+            console.error('Error parsing data:', e);
         }
-    } catch (e) {
-        console.error('Error:', e);
     }
 }
+
 
 function handleDisconnect(userID) {
     usersInChat.delete(userID);
