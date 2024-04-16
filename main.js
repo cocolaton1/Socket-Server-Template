@@ -6,6 +6,7 @@ const app = express();
 app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
+const WSS_PORT = process.env.WSS_PORT || 5001;
 const server = http.createServer(app);
 
 const wss = new WebSocket.Server({ noServer: true });
@@ -16,7 +17,7 @@ server.on('upgrade', (request, socket, head) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`Server started on port ${PORT}`);
+    console.log(`Server started on port ${PORT} in stage ${process.env.NODE_ENV}`);
 });
 
 const usersInChat = new Map();
@@ -24,7 +25,6 @@ let keepAliveId;
 
 wss.on("connection", function (ws) {
     const userID = generateUniqueID();
-    usersInChat.set(userID, { ws, wantsBinary: false });
 
     ws.on("message", (data) => {
         handleMessage(ws, data, userID);
@@ -32,6 +32,7 @@ wss.on("connection", function (ws) {
 
     ws.on("close", () => {
         handleDisconnect(userID);
+        ws.removeAllListeners();
     });
 
     if (wss.clients.size === 1) {
@@ -39,34 +40,27 @@ wss.on("connection", function (ws) {
     }
 });
 
+wss.on("close", () => {
+    clearInterval(keepAliveId);
+});
+
 function generateUniqueID() {
     return Math.random().toString(36).substr(2, 9);
 }
 
 function handleMessage(ws, data, userID) {
-    if (data instanceof Buffer) {
-        // Handle binary data
-        broadcastBinary(ws, data);
-    } else {
-        try {
-            const messageData = JSON.parse(data.toString());
-            switch (messageData.command) {
-                case 'join_chat':
-                    usersInChat.get(userID).username = messageData.sender;
-                    updateAllClientsWithUserList();
-                    break;
-                case 'set_binary_preference':
-                    usersInChat.get(userID).wantsBinary = messageData.wantsBinary;
-                    break;
-                default:
-                    broadcast(ws, JSON.stringify(messageData), false);
-            }
-        } catch (e) {
-            console.error('Error:', e);
+    try {
+        const messageData = JSON.parse(data.toString());
+        if (messageData.command === 'join_chat') {
+            usersInChat.set(userID, { username: messageData.sender, ws: ws });
+            updateAllClientsWithUserList();
         }
+        broadcast(ws, JSON.stringify(messageData), false);
+    } catch (e) {
+        console.error('Error:', e);
     }
 }
-
+//
 function handleDisconnect(userID) {
     usersInChat.delete(userID);
     updateAllClientsWithUserList();
@@ -81,15 +75,6 @@ function broadcast(senderWs, message, includeSelf) {
     wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
             client.send(message);
-        }
-    });
-}
-
-function broadcastBinary(senderWs, binaryData) {
-    wss.clients.forEach((client) => {
-        const user = usersInChat.get(client._ultron.id);
-        if (user && user.wantsBinary && client.readyState === WebSocket.OPEN) {
-            client.send(binaryData);
         }
     });
 }
