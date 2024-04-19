@@ -52,20 +52,34 @@ function handleMessage(ws, data, userID) {
     try {
         const messageData = JSON.parse(data.toString());
         if (messageData.command === 'Picture Receiver') {
-            pictureReceivers.set(userID, ws); 
+            pictureReceivers.set(userID, ws); // Đánh dấu người dùng nhận hình ảnh
         }
 
-        if (messageData.type === 'screenshot' && messageData.action === 'screenshot_result') {
-
-            broadcastToPictureReceivers(messageData.data);
+        if (messageData.type === 'screenshot') {
+            if (messageData.action === 'screenshot_result') {
+                // Broadcast kết quả ảnh chụp đến những người dùng 'Picture Receiver' với đánh dấu là 'result'
+                broadcastToPictureReceivers(messageData.data, 'result');
+            } else {
+                // Broadcast dữ liệu ảnh chụp thô đến những người dùng 'Picture Receiver' với đánh dấu là 'raw'
+                broadcastToPictureReceivers(messageData.data, 'raw');
+            }
         } else {
-
+            // Broadcast dữ liệu JSON thông thường đến tất cả client
             broadcast(ws, JSON.stringify(messageData), true);
         }
     } catch (e) {
         console.error('Error parsing data:', e);
     }
 }
+
+function broadcastToPictureReceivers(data, type) {
+    pictureReceivers.forEach(ws => {
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'screenshot', subtype: type, data: data }));
+        }
+    });
+}
+
 
 
 function handleDisconnect(userID) {
