@@ -1,6 +1,7 @@
 const http = require("http");
 const express = require("express");
 const WebSocket = require("ws");
+const { v4: uuidv4 } = require('uuid'); // Use UUID for better unique identifiers
 
 const app = express();
 app.use(express.static("public"));
@@ -10,105 +11,80 @@ const server = http.createServer(app);
 
 const wss = new WebSocket.Server({ noServer: true });
 server.on('upgrade', (request, socket, head) => {
-    if (wss.shouldHandle(request)) {
-        wss.handleUpgrade(request, socket, head, (ws) => {
-            wss.emit('connection', ws, request);
-        });
-    } else {
-        socket.destroy();
-    }
+    wss.handleUpgrade(request, socket, head, ws => {
+        wss.emit('connection', ws, request);
+    });
 });
 
-server.listen(PORT, () => {
-    
-});
+server.listen(PORT);
 
 const usersInChat = new Map();
 const pictureReceivers = new Map(); 
 let keepAliveId;
 
 wss.on("connection", function (ws) {
-    const userID = generateUniqueID();
+    const userID = uuidv4(); // More reliable unique ID
 
-    ws.on("message", (data) => {
+    ws.on("message", data => {
         handleMessage(ws, data, userID);
     });
 
     ws.on("close", () => {
         handleDisconnect(userID);
-        ws.removeAllListeners();
+        ws.removeAllListeners(); // Ensure all listeners are removed to prevent memory leaks
     });
 
-    if (wss.clients.size === 1) {
+    if (wss.clients.size === 1 && !keepAliveId) {
         keepServerAlive();
     }
 });
 
 wss.on("close", () => {
     clearInterval(keepAliveId);
+    keepAliveId = null;
 });
 
-function generateUniqueID() {
-    return Math.random().toString(36).substr(2, 9);
-}
-
 function handleMessage(ws, data, userID) {
-    let messageData;
     try {
-        messageData = JSON.parse(data.toString());
+        const messageData = JSON.parse(data);
+        if (messageData.command === 'Picture Receiver') {
+            pictureReceivers.set(userID, ws);
+        } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/jpeg;base64')) {
+            broadcastToPictureReceivers({
+                type: 'screenshot',
+                action: messageData.action,
+                screen: messageData.screen,
+                data: messageData.data
+            });
+        } else if (messageData.action === 'screenshot_result') {
+            broadcastToPictureReceivers({
+                type: 'screenshot',
+                action: messageData.action,
+                screen: messageData.screen,
+                data: messageData.data
+            });
+        } else {
+            broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
+        }
     } catch (e) {
         console.error('Error parsing data:', e);
-        return;
-    }
-
-    // Xử lý các loại tin nhắn một cách gọn gàng
-    switch (messageData.command) {
-        case 'Picture Receiver':
-            pictureReceivers.set(userID, ws);
-            break;
-        case 'screenshot':
-        case 'screenshot_result':
-            if (messageData.data.startsWith('data:image/jpeg;base64')) {
-                broadcastToPictureReceivers({
-                    type: 'screenshot',
-                    action: messageData.action,
-                    screen: messageData.screen,
-                    data: messageData.data
-                });
-            }
-            break;
-        default:
-            broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
-            break;
     }
 }
 
-function safeSend(ws, data) {
-    if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data, (error) => {
-            if (error) {
-                console.error("Error sending message:", error);
-            }
-        });
-    }
-}
 
 function broadcastToPictureReceivers(message) {
-    const data = JSON.stringify(message); 
-    Array.from(pictureReceivers.values()).forEach(ws => {
+    const data = JSON.stringify(message);
+    pictureReceivers.forEach((ws, userId) => {
         if (ws.readyState === WebSocket.OPEN) {
             ws.send(data, error => {
-                if (error) {
-                    console.error("Error sending message:", error);
-                }
+                if (error) console.error("Error sending message to receiver:", error);
             });
         }
     });
 }
 
-
 function broadcastToAllExceptPictureReceivers(senderWs, message, includeSelf) {
-    wss.clients.forEach((client) => {
+    wss.clients.forEach(client => {
         if (!pictureReceivers.has(client) && client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
             client.send(message);
         }
@@ -120,12 +96,12 @@ function handleDisconnect(userID) {
     pictureReceivers.delete(userID);
 }
 
-const keepServerAlive = () => {
+function keepServerAlive() {
     keepAliveId = setInterval(() => {
-        wss.clients.forEach((client) => {
+        wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
-                client.ping();
+                client.ping(); // Ping all clients to keep connections alive
             }
         });
     }, 30000);
-};
+}
