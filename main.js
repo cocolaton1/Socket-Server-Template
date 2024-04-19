@@ -55,17 +55,17 @@ function handleMessage(ws, data, userID) {
             pictureReceivers.set(userID, ws); // Đánh dấu người dùng nhận hình ảnh
         }
 
+        // Xử lý chỉ gửi dữ liệu ảnh chụp đến các 'Picture Receiver'
         if (messageData.type === 'screenshot') {
+            let subtype = 'raw'; // Mặc định là dữ liệu thô
             if (messageData.action === 'screenshot_result') {
-                // Broadcast kết quả ảnh chụp đến những người dùng 'Picture Receiver' với đánh dấu là 'result'
-                broadcastToPictureReceivers(messageData.data, 'result');
-            } else {
-                // Broadcast dữ liệu ảnh chụp thô đến những người dùng 'Picture Receiver' với đánh dấu là 'raw'
-                broadcastToPictureReceivers(messageData.data, 'raw');
+                subtype = 'result'; // Nếu có action là 'screenshot_result'
             }
+            // Gửi dữ liệu đến các 'Picture Receiver' với subtype phù hợp
+            broadcastToPictureReceivers(messageData.data, subtype);
         } else {
             // Broadcast dữ liệu JSON thông thường đến tất cả client
-            broadcast(ws, JSON.stringify(messageData), true);
+            broadcastToAll(ws, JSON.stringify(messageData), true);
         }
     } catch (e) {
         console.error('Error parsing data:', e);
@@ -79,6 +79,15 @@ function broadcastToPictureReceivers(data, type) {
         }
     });
 }
+
+function broadcastToAll(senderWs, message, includeSelf) {
+    wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
+            client.send(message);
+        }
+    });
+}
+
 
 
 
