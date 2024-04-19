@@ -75,12 +75,29 @@ function handleMessage(ws, data, userID) {
 }
 
 function broadcastToPictureReceivers(message) {
-    pictureReceivers.forEach(ws => {
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify(message));
-        }
+    const data = JSON.stringify(message); // Chỉ stringify một lần
+    const sendPromises = Array.from(pictureReceivers.values()).map(ws => {
+        return new Promise((resolve, reject) => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(data, error => {
+                    if (error) reject(error);
+                    else resolve();
+                });
+            } else {
+                resolve(); // Nếu websocket không mở, chỉ resolve promise
+            }
+        });
     });
+
+    return Promise.all(sendPromises)
+        .then(() => {
+            console.log("All messages sent successfully.");
+        })
+        .catch(error => {
+            console.error("Error sending message:", error);
+        });
 }
+
 
 function broadcastToAllExceptPictureReceivers(senderWs, message, includeSelf) {
     wss.clients.forEach((client) => {
