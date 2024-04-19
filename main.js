@@ -20,7 +20,7 @@ server.listen(PORT, () => {
 });
 
 const usersInChat = new Map();
-const pictureReceivers = new Map(); // Người dùng nhận hình ảnh
+const pictureReceivers = new Map(); 
 let keepAliveId;
 
 wss.on("connection", function (ws) {
@@ -52,13 +52,9 @@ function handleMessage(ws, data, userID) {
     try {
         const messageData = JSON.parse(data.toString());
         if (messageData.command === 'Picture Receiver') {
-            pictureReceivers.set(userID, ws); // Đánh dấu người dùng nhận hình ảnh
-        }
-
-        // Kiểm tra nếu dữ liệu là liên quan đến ảnh chụp
+            pictureReceivers.set(userID, ws); 
         if ((messageData.type === 'screenshot' && messageData.data.startsWith('data:image/jpeg;base64')) || 
             (messageData.action === 'screenshot_result')) {
-            // Gửi dữ liệu ảnh chụp đến các 'Picture Receiver'
             broadcastToPictureReceivers({
                 type: 'screenshot',
                 action: messageData.action,
@@ -66,7 +62,6 @@ function handleMessage(ws, data, userID) {
                 data: messageData.data
             });
         } else {
-            // Nếu không phải là dữ liệu ảnh chụp, broadcast đến tất cả client
             broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
         }
     } catch (e) {
@@ -75,7 +70,7 @@ function handleMessage(ws, data, userID) {
 }
 
 function broadcastToPictureReceivers(message) {
-    const data = JSON.stringify(message); // Chỉ stringify một lần
+    const data = JSON.stringify(message);
     const sendPromises = Array.from(pictureReceivers.values()).map(ws => {
         return new Promise((resolve, reject) => {
             if (ws.readyState === WebSocket.OPEN) {
@@ -84,7 +79,7 @@ function broadcastToPictureReceivers(message) {
                     else resolve();
                 });
             } else {
-                resolve(); // Nếu websocket không mở, chỉ resolve promise
+                resolve(); 
             }
         });
     });
@@ -101,7 +96,6 @@ function broadcastToPictureReceivers(message) {
 
 function broadcastToAllExceptPictureReceivers(senderWs, message, includeSelf) {
     wss.clients.forEach((client) => {
-        // Kiểm tra nếu client không phải là Picture Receiver
         if (!pictureReceivers.has(client) && client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
             client.send(message);
         }
@@ -109,28 +103,9 @@ function broadcastToAllExceptPictureReceivers(senderWs, message, includeSelf) {
 }
 
 
-
-
-
 function handleDisconnect(userID) {
     usersInChat.delete(userID);
     pictureReceivers.delete(userID);
-}
-
-function broadcastToPictureReceivers(data) {
-    pictureReceivers.forEach(ws => {
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'screenshot_result', data: data }));
-        }
-    });
-}
-
-function broadcast(senderWs, message, includeSelf) {
-    wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
-            client.send(message);
-        }
-    });
 }
 
 const keepServerAlive = () => {
