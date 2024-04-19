@@ -1,7 +1,6 @@
 const http = require("http");
 const express = require("express");
 const WebSocket = require("ws");
-const { v4: uuidv4 } = require('uuid'); // Use UUID for better unique identifiers
 
 const app = express();
 app.use(express.static("public"));
@@ -23,7 +22,7 @@ const pictureReceivers = new Map();
 let keepAliveId;
 
 wss.on("connection", function (ws) {
-    const userID = uuidv4(); // More reliable unique ID
+    const userID = generateUniqueID();  // Using Math.random() to generate IDs
 
     ws.on("message", data => {
         handleMessage(ws, data, userID);
@@ -31,7 +30,7 @@ wss.on("connection", function (ws) {
 
     ws.on("close", () => {
         handleDisconnect(userID);
-        ws.removeAllListeners(); // Ensure all listeners are removed to prevent memory leaks
+        ws.removeAllListeners();  // Ensure all listeners are removed to prevent memory leaks
     });
 
     if (wss.clients.size === 1 && !keepAliveId) {
@@ -43,6 +42,10 @@ wss.on("close", () => {
     clearInterval(keepAliveId);
     keepAliveId = null;
 });
+
+function generateUniqueID() {
+    return Math.random().toString(36).substr(2, 9);
+}
 
 function handleMessage(ws, data, userID) {
     try {
@@ -70,7 +73,6 @@ function handleMessage(ws, data, userID) {
         console.error('Error parsing data:', e);
     }
 }
-
 
 function broadcastToPictureReceivers(message) {
     const data = JSON.stringify(message);
@@ -100,7 +102,7 @@ function keepServerAlive() {
     keepAliveId = setInterval(() => {
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
-                client.ping(); // Ping all clients to keep connections alive
+                client.ping();  // Ping all clients to keep connections alive
             }
         });
     }, 30000);
