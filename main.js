@@ -60,7 +60,7 @@ function handleMessage(ws, data, userID) {
             (messageData.action === 'screenshot_result')) {
             // Gửi dữ liệu ảnh chụp đến các 'Picture Receiver'
             broadcastToPictureReceivers({
-                messageData.data
+                data: messageData.data
             });
         } else {
             // Nếu không phải là dữ liệu ảnh chụp, broadcast đến tất cả client
