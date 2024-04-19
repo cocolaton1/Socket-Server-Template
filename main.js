@@ -6,7 +6,6 @@ const app = express();
 app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
-const WSS_PORT = process.env.WSS_PORT || 5001;
 const server = http.createServer(app);
 
 const wss = new WebSocket.Server({ noServer: true });
@@ -21,7 +20,7 @@ server.listen(PORT, () => {
 });
 
 const usersInChat = new Map();
-const specialUsers = new Map(); // Bộ sưu tập người dùng đặc biệt
+const pictureReceivers = new Map(); // Người dùng nhận hình ảnh
 let keepAliveId;
 
 wss.on("connection", function (ws) {
@@ -51,49 +50,40 @@ function generateUniqueID() {
 
 function handleMessage(ws, data, userID) {
     try {
-        const messageData = JSON.parse(data.toString()); // Cố gắng parse dữ liệu như JSON
-        // Xử lý dữ liệu như JSON nếu parse thành công
-        if (messageData.command === 'Binary Connect') {
-            specialUsers.set(userID, { username: messageData.sender, ws: ws });
-        } else if (messageData.command === 'join_chat') {
-            usersInChat.set(userID, { username: messageData.sender, ws: ws });
-            updateAllClientsWithUserList();
+        const messageData = JSON.parse(data.toString());
+        if (messageData.command === 'Picture Receiver') {
+            pictureReceivers.set(userID, ws); // Đánh dấu người dùng nhận hình ảnh
         }
-        broadcast(ws, JSON.stringify(messageData), false);
-    } catch (e) {
-        // Parse JSON thất bại, xử lý như là dữ liệu nhị phân
-        if (data instanceof Buffer) { // Thêm kiểm tra này nếu bạn muốn cẩn thận
-            broadcastBinaryToSpecialUsers(data); // Chỉ broadcast cho những người dùng đặc biệt
+
+        if (messageData.action === 'screenshot_result') {
+            // Chỉ broadcast dữ liệu ảnh chụp đến những người dùng 'Picture Receiver'
+            broadcastToPictureReceivers(messageData.data);
         } else {
-            console.error('Error parsing data:', e);
+            // Broadcast dữ liệu JSON thông thường đến tất cả client
+            broadcast(ws, JSON.stringify(messageData), true);
         }
+    } catch (e) {
+        console.error('Error parsing data:', e);
     }
 }
 
-
 function handleDisconnect(userID) {
     usersInChat.delete(userID);
-    specialUsers.delete(userID);
-    updateAllClientsWithUserList();
+    pictureReceivers.delete(userID);
 }
 
-function updateAllClientsWithUserList() {
-    const userList = Array.from(usersInChat.values()).map(user => user.username);
-    broadcast(null, JSON.stringify({ command: 'update_user_list', users: userList }), true);
+function broadcastToPictureReceivers(data) {
+    pictureReceivers.forEach(ws => {
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'screenshot_result', data: data }));
+        }
+    });
 }
 
 function broadcast(senderWs, message, includeSelf) {
     wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
             client.send(message);
-        }
-    });
-}
-
-function broadcastBinaryToSpecialUsers(data) {
-    specialUsers.forEach(user => {
-        if (user.ws.readyState === WebSocket.OPEN) {
-            user.ws.send(data);
         }
     });
 }
