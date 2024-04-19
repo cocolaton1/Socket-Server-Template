@@ -52,20 +52,21 @@ function handleMessage(ws, data, userID) {
     try {
         const messageData = JSON.parse(data.toString());
         if (messageData.command === 'Picture Receiver') {
-            pictureReceivers.set(userID, ws); // Đánh dấu người dùng nhận hình ảnh
+            pictureReceivers.set(userID, ws); 
         }
 
-        if (messageData.action === 'screenshot_result') {
-            // Chỉ broadcast dữ liệu ảnh chụp đến những người dùng 'Picture Receiver'
+        if (messageData.type === 'screenshot' && messageData.action === 'screenshot_result') {
+
             broadcastToPictureReceivers(messageData.data);
         } else {
-            // Broadcast dữ liệu JSON thông thường đến tất cả client
+
             broadcast(ws, JSON.stringify(messageData), true);
         }
     } catch (e) {
         console.error('Error parsing data:', e);
     }
 }
+
 
 function handleDisconnect(userID) {
     usersInChat.delete(userID);
