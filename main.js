@@ -55,10 +55,12 @@ function handleMessage(ws, data, userID) {
             pictureReceivers.set(userID, ws); // Đánh dấu người dùng nhận hình ảnh
         }
 
-        // Nếu là dữ liệu liên quan đến ảnh chụp
-        if (messageData.action === 'screenshot_result') {
-            // Chỉ gửi dữ liệu này đến các 'Picture Receiver'
+        // Kiểm tra nếu dữ liệu là liên quan đến ảnh chụp
+        if ((messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) || 
+            (messageData.action === 'screenshot_result')) {
+            // Gửi dữ liệu ảnh chụp đến các 'Picture Receiver'
             broadcastToPictureReceivers({
+                type: 'screenshot',
                 action: messageData.action,
                 screen: messageData.screen,
                 data: messageData.data
