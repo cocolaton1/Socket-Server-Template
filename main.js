@@ -73,27 +73,17 @@ function handleMessage(ws, data, userID) {
 
 function broadcastToPictureReceivers(message) {
     const data = JSON.stringify(message); 
-    const sendPromises = Array.from(pictureReceivers.values()).map(ws => {
-        return new Promise((resolve, reject) => {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(data, error => {
-                    if (error) reject(error);
-                    else resolve();
-                });
-            } else {
-                resolve(); 
-            }
-        });
+    Array.from(pictureReceivers.values()).forEach(ws => {
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send(data, error => {
+                if (error) {
+                    console.error("Error sending message:", error);
+                }
+            });
+        }
     });
-
-    return Promise.all(sendPromises)
-        .then(() => {
-            
-        })
-        .catch(error => {
-            console.error("Error sending message:", error);
-        });
 }
+
 
 function broadcastToAllExceptPictureReceivers(senderWs, message, includeSelf) {
     wss.clients.forEach((client) => {
