@@ -55,38 +55,40 @@ function handleMessage(ws, data, userID) {
             pictureReceivers.set(userID, ws); // Đánh dấu người dùng nhận hình ảnh
         }
 
-        // Xử lý chỉ gửi dữ liệu ảnh chụp đến các 'Picture Receiver'
-        if (messageData.type === 'screenshot') {
-            let subtype = 'raw'; // Mặc định là dữ liệu thô
-            if (messageData.action === 'screenshot_result') {
-                subtype = 'result'; // Nếu có action là 'screenshot_result'
-            }
-            // Gửi dữ liệu đến các 'Picture Receiver' với subtype phù hợp
-            broadcastToPictureReceivers(messageData.data, subtype);
+        // Nếu là dữ liệu liên quan đến ảnh chụp
+        if (messageData.action === 'screenshot_result') {
+            // Chỉ gửi dữ liệu này đến các 'Picture Receiver'
+            broadcastToPictureReceivers({
+                action: messageData.action,
+                screen: messageData.screen,
+                data: messageData.data
+            });
         } else {
-            // Broadcast dữ liệu JSON thông thường đến tất cả client
-            broadcastToAll(ws, JSON.stringify(messageData), true);
+            // Nếu không phải là dữ liệu ảnh chụp, broadcast đến tất cả client
+            broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
         }
     } catch (e) {
         console.error('Error parsing data:', e);
     }
 }
 
-function broadcastToPictureReceivers(data, type) {
+function broadcastToPictureReceivers(message) {
     pictureReceivers.forEach(ws => {
         if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'screenshot', subtype: type, data: data }));
+            ws.send(JSON.stringify(message));
         }
     });
 }
 
-function broadcastToAll(senderWs, message, includeSelf) {
+function broadcastToAllExceptPictureReceivers(senderWs, message, includeSelf) {
     wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
+        // Kiểm tra nếu client không phải là Picture Receiver
+        if (!pictureReceivers.has(client) && client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
             client.send(message);
         }
     });
 }
+
 
 
 
