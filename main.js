@@ -56,7 +56,7 @@ function handleMessage(ws, data, userID) {
         }
 
         // Kiểm tra nếu dữ liệu là liên quan đến ảnh chụp
-        if ((messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) || 
+        if ((messageData.type === 'screenshot' && messageData.data.startsWith('data:image/jpeg;base64')) || 
             (messageData.action === 'screenshot_result')) {
             // Gửi dữ liệu ảnh chụp đến các 'Picture Receiver'
             broadcastToPictureReceivers({
