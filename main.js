@@ -52,7 +52,7 @@ function handleMessage(ws, data, userID) {
         const messageData = JSON.parse(data);
         if (messageData.command === 'Picture Receiver') {
             pictureReceivers.set(userID, ws);
-        } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/jpeg;base64')) {
+        } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) {
             broadcastToPictureReceivers({
                 type: 'screenshot',
                 action: messageData.action,
