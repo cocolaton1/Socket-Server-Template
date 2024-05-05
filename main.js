@@ -22,7 +22,7 @@ const pictureReceivers = new Map();
 let keepAliveId;
 
 wss.on("connection", function (ws) {
-    const userID = generateUniqueID();  // Using Math.random() to generate IDs
+    const userID = generateUniqueID();  
 
     ws.on("message", data => {
         handleMessage(ws, data, userID);
@@ -30,7 +30,7 @@ wss.on("connection", function (ws) {
 
     ws.on("close", () => {
         handleDisconnect(userID);
-        ws.removeAllListeners();  // Ensure all listeners are removed to prevent memory leaks
+        ws.removeAllListeners(); 
     });
 
     if (wss.clients.size === 1 && !keepAliveId) {
