@@ -33,12 +33,6 @@ wss.on("connection", function (ws) {
         ws.removeAllListeners(); 
     });
 
-    ws.on("pong", () => {
-        ws.isAlive = true; // Đánh dấu client này vẫn còn kết nối
-    });
-
-    ws.isAlive = true;
-
     if (wss.clients.size === 1 && !keepAliveId) {
         keepServerAlive();
     }
@@ -107,9 +101,9 @@ function handleDisconnect(userID) {
 function keepServerAlive() {
     keepAliveId = setInterval(() => {
         wss.clients.forEach(client => {
-            if (client.isAlive === false) return client.terminate();
-            client.isAlive = false;
-            client.ping(); // Ping tất cả các client để giữ kết nối sống
+            if (client.readyState === WebSocket.OPEN) {
+                client.ping();  // Ping all clients to keep connections alive
+            }
         });
     }, 30000);
 }
