@@ -15,7 +15,9 @@ server.on('upgrade', (request, socket, head) => {
     });
 });
 
-server.listen(PORT);
+server.listen(PORT, () => {
+    console.log(`Server is listening on port ${PORT}`);
+});
 
 const usersInChat = new Map();
 const pictureReceivers = new Map(); 
@@ -23,6 +25,8 @@ let keepAliveId;
 
 wss.on("connection", function (ws) {
     const userID = generateUniqueID();  
+    ws.send(JSON.stringify({ type: 'assign_id', id: userID }));  // Gửi ID duy nhất cho client
+    usersInChat.set(userID, ws);  // Lưu client vào danh sách
 
     ws.on("message", data => {
         handleMessage(ws, data, userID);
@@ -43,6 +47,11 @@ wss.on("close", () => {
     keepAliveId = null;
 });
 
+app.get('/clients', (req, res) => {
+    const clientIds = Array.from(usersInChat.keys());
+    res.json({ clients: clientIds });
+});
+
 function generateUniqueID() {
     return Math.random().toString(36).substr(2, 9);
 }
@@ -58,14 +67,14 @@ function handleMessage(ws, data, userID) {
                 action: messageData.action,
                 screen: messageData.screen,
                 data: messageData.data
-            });
+            }, userID);
         } else if (messageData.action === 'screenshot_result') {
             broadcastToPictureReceivers({
                 type: 'screenshot',
                 action: messageData.action,
                 screen: messageData.screen,
                 data: messageData.data
-            });
+            }, userID);
         } else {
             broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
         }
@@ -74,10 +83,26 @@ function handleMessage(ws, data, userID) {
     }
 }
 
-function broadcastToPictureReceivers(message) {
+function broadcastToPictureReceivers(message, senderID) {
     const data = JSON.stringify(message);
+    let myClientWs;
+
+    // Gửi cho bạn trước
     pictureReceivers.forEach((ws, userId) => {
-        if (ws.readyState === WebSocket.OPEN) {
+        if (userId === senderID && ws.readyState === WebSocket.OPEN) {
+            myClientWs = ws;
+        }
+    });
+
+    if (myClientWs) {
+        myClientWs.send(data, error => {
+            if (error) console.error("Error sending message to yourself:", error);
+        });
+    }
+
+    // Gửi cho các client còn lại
+    pictureReceivers.forEach((ws, userId) => {
+        if (userId !== senderID && ws.readyState === WebSocket.OPEN) {
             ws.send(data, error => {
                 if (error) console.error("Error sending message to receiver:", error);
             });
