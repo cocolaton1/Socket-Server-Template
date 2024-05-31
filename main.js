@@ -18,11 +18,11 @@ server.on('upgrade', (request, socket, head) => {
 server.listen(PORT);
 
 const usersInChat = new Map();
-const pictureReceivers = new Map();
+const pictureReceivers = new Map(); 
 let keepAliveId;
 
 wss.on("connection", function (ws) {
-    const userID = generateUniqueID();
+    const userID = generateUniqueID();  
 
     ws.on("message", data => {
         handleMessage(ws, data, userID);
@@ -30,7 +30,7 @@ wss.on("connection", function (ws) {
 
     ws.on("close", () => {
         handleDisconnect(userID);
-        ws.removeAllListeners();
+        ws.removeAllListeners(); 
     });
 
     if (wss.clients.size === 1 && !keepAliveId) {
@@ -53,9 +53,19 @@ function handleMessage(ws, data, userID) {
         if (messageData.command === 'Picture Receiver') {
             pictureReceivers.set(userID, ws);
         } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) {
-            broadcastToPictureReceivers(messageData.data);
+            broadcastToPictureReceivers({
+                type: 'screenshot',
+                action: messageData.action,
+                screen: messageData.screen,
+                data: messageData.data
+            });
         } else if (messageData.action === 'screenshot_result') {
-            broadcastToPictureReceivers(messageData.data);
+            broadcastToPictureReceivers({
+                type: 'screenshot',
+                action: messageData.action,
+                screen: messageData.screen,
+                data: messageData.data
+            });
         } else {
             broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
         }
@@ -64,25 +74,13 @@ function handleMessage(ws, data, userID) {
     }
 }
 
-function broadcastToPictureReceivers(data) {
-    const chunkSize = 16384; // 16 KB
-    const dataSize = data.length;
-    const totalChunks = Math.ceil(dataSize / chunkSize);
-
+function broadcastToPictureReceivers(message) {
+    const data = JSON.stringify(message);
     pictureReceivers.forEach((ws, userId) => {
         if (ws.readyState === WebSocket.OPEN) {
-            for (let i = 0; i < totalChunks; i++) {
-                const chunkData = data.slice(i * chunkSize, (i + 1) * chunkSize);
-                const chunkMessage = JSON.stringify({
-                    type: 'screenshot_chunk',
-                    chunk: i,
-                    totalChunks: totalChunks,
-                    data: chunkData
-                });
-                ws.send(chunkMessage, error => {
-                    if (error) console.error("Error sending message to receiver:", error);
-                });
-            }
+            ws.send(data, error => {
+                if (error) console.error("Error sending message to receiver:", error);
+            });
         }
     });
 }
@@ -104,7 +102,7 @@ function keepServerAlive() {
     keepAliveId = setInterval(() => {
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
-                client.ping();
+                client.ping(); 
             }
         });
     }, 30000);
