@@ -71,7 +71,6 @@ function broadcastToPictureReceivers(data) {
 
     pictureReceivers.forEach((ws, userId) => {
         if (ws.readyState === WebSocket.OPEN) {
-            const promises = [];
             for (let i = 0; i < totalChunks; i++) {
                 const chunkData = data.slice(i * chunkSize, (i + 1) * chunkSize);
                 const chunkMessage = JSON.stringify({
@@ -80,24 +79,10 @@ function broadcastToPictureReceivers(data) {
                     totalChunks: totalChunks,
                     data: chunkData
                 });
-                promises.push(
-                    new Promise((resolve, reject) => {
-                        ws.send(chunkMessage, error => {
-                            if (error) {
-                                console.error("Error sending message to receiver:", error);
-                                reject(error);
-                            } else {
-                                resolve();
-                            }
-                        });
-                    })
-                );
+                ws.send(chunkMessage, error => {
+                    if (error) console.error("Error sending message to receiver:", error);
+                });
             }
-            Promise.all(promises).then(() => {
-                console.log('All chunks sent');
-            }).catch(err => {
-                console.error('Error sending chunks:', err);
-            });
         }
     });
 }
