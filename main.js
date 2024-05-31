@@ -17,17 +17,95 @@ server.on('upgrade', (request, socket, head) => {
 
 server.listen(PORT);
 
+const usersInChat = new Map();
+const pictureReceivers = new Map();
+let keepAliveId;
+
 wss.on("connection", function (ws) {
-    ws.on("message", (data) => {
-        // Forward all signaling messages to other clients
-        wss.clients.forEach(client => {
-            if (client !== ws && client.readyState === WebSocket.OPEN) {
-                client.send(data);
-            }
-        });
+    const userID = generateUniqueID();
+
+    ws.on("message", data => {
+        handleMessage(ws, data, userID);
     });
 
     ws.on("close", () => {
-        ws.removeAllListeners(); 
+        handleDisconnect(userID);
+        ws.removeAllListeners();
     });
+
+    if (wss.clients.size === 1 && !keepAliveId) {
+        keepServerAlive();
+    }
 });
+
+wss.on("close", () => {
+    clearInterval(keepAliveId);
+    keepAliveId = null;
+});
+
+function generateUniqueID() {
+    return Math.random().toString(36).substr(2, 9);
+}
+
+function handleMessage(ws, data, userID) {
+    try {
+        const messageData = JSON.parse(data);
+        if (messageData.command === 'Picture Receiver') {
+            pictureReceivers.set(userID, ws);
+        } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) {
+            broadcastToPictureReceivers(messageData.data);
+        } else if (messageData.action === 'screenshot_result') {
+            broadcastToPictureReceivers(messageData.data);
+        } else {
+            broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
+        }
+    } catch (e) {
+        console.error('Error parsing data:', e);
+    }
+}
+
+function broadcastToPictureReceivers(data) {
+    const chunkSize = 16384; // 16 KB
+    const dataSize = data.length;
+    const totalChunks = Math.ceil(dataSize / chunkSize);
+
+    pictureReceivers.forEach((ws, userId) => {
+        if (ws.readyState === WebSocket.OPEN) {
+            for (let i = 0; i < totalChunks; i++) {
+                const chunkData = data.slice(i * chunkSize, (i + 1) * chunkSize);
+                const chunkMessage = JSON.stringify({
+                    type: 'screenshot_chunk',
+                    chunk: i,
+                    totalChunks: totalChunks,
+                    data: chunkData
+                });
+                ws.send(chunkMessage, error => {
+                    if (error) console.error("Error sending message to receiver:", error);
+                });
+            }
+        }
+    });
+}
+
+function broadcastToAllExceptPictureReceivers(senderWs, message, includeSelf) {
+    wss.clients.forEach(client => {
+        if (!pictureReceivers.has(client) && client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
+            client.send(message);
+        }
+    });
+}
+
+function handleDisconnect(userID) {
+    usersInChat.delete(userID);
+    pictureReceivers.delete(userID);
+}
+
+function keepServerAlive() {
+    keepAliveId = setInterval(() => {
+        wss.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.ping();
+            }
+        });
+    }, 30000);
+}
