@@ -48,8 +48,13 @@ wss.on("close", () => {
 });
 
 app.get('/clients', (req, res) => {
-    const clientIds = Array.from(usersInChat.keys());
-    res.json({ clients: clientIds });
+    const clients = Array.from(usersInChat.keys()).map(clientId => {
+        return {
+            id: clientId,
+            isSpecial: pictureReceivers.has(clientId)
+        };
+    });
+    res.json({ clients });
 });
 
 function generateUniqueID() {
