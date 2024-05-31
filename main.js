@@ -28,6 +28,8 @@ wss.on("connection", function (ws) {
     const userID = generateUniqueID();
     usersInChat.set(userID, { ws, info: null });  // Lưu client vào danh sách với thông tin bổ sung
 
+    ws.send(JSON.stringify({ type: 'assign_id', id: userID }));  // Gửi ID duy nhất cho client
+
     ws.on("message", data => {
         handleMessage(ws, data, userID);
     });
