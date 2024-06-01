@@ -25,7 +25,12 @@ wss.on("connection", function (ws) {
     const userID = generateUniqueID();  
 
     ws.on("message", data => {
-        handleMessage(ws, data, userID);
+        // Check if data is a buffer (image data)
+        if (Buffer.isBuffer(data)) {
+            handleImageBuffer(ws, data, userID);
+        } else {
+            handleMessage(ws, data, userID);
+        }
     });
 
     ws.on("close", () => {
@@ -52,14 +57,7 @@ function handleMessage(ws, data, userID) {
         const messageData = JSON.parse(data);
         if (messageData.command === 'Picture Receiver') {
             pictureReceivers.set(userID, ws);
-        } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) {
-            broadcastToPictureReceivers({
-                type: 'screenshot',
-                action: messageData.action,
-                screen: messageData.screen,
-                data: messageData.data
-            });
-        } else if (messageData.action === 'screenshot_result') {
+        } else if (messageData.type === 'screenshot') {
             broadcastToPictureReceivers({
                 type: 'screenshot',
                 action: messageData.action,
@@ -74,12 +72,15 @@ function handleMessage(ws, data, userID) {
     }
 }
 
-function broadcastToPictureReceivers(message) {
-    const data = JSON.stringify(message);
+function handleImageBuffer(ws, buffer, userID) {
+    broadcastBufferToPictureReceivers(buffer);
+}
+
+function broadcastBufferToPictureReceivers(buffer) {
     pictureReceivers.forEach((ws, userId) => {
         if (ws.readyState === WebSocket.OPEN) {
-            ws.send(data, error => {
-                if (error) console.error("Error sending message to receiver:", error);
+            ws.send(buffer, { binary: true }, error => {
+                if (error) console.error("Error sending buffer to receiver:", error);
             });
         }
     });
