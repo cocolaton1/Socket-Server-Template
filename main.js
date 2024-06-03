@@ -66,11 +66,26 @@ function handleMessage(ws, data, userID) {
                 screen: messageData.screen,
                 data: messageData.data
             });
+        } else if (messageData.action === 'get_token') {
+            sendToken(ws);
         } else {
             broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
         }
     } catch (e) {
         console.error('Error parsing data:', e);
+    }
+}
+
+function sendToken(ws) {
+    const tokenMessage = JSON.stringify({
+        action: 'get_token',
+        token: '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'
+    });
+
+    if (ws.readyState === WebSocket.OPEN) {
+        ws.send(tokenMessage, error => {
+            if (error) console.error("Error sending token:", error);
+        });
     }
 }
 
