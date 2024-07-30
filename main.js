@@ -70,7 +70,7 @@ function handleMessage(ws, data, userID) {
             broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
         }
     } catch (e) {
-        console.error('Error parsing data:', e);
+        console.error('Error data:', e);
     }
 }
 
