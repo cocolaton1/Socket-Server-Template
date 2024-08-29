@@ -2,9 +2,7 @@ const http = require("http");
 const express = require("express");
 const WebSocket = require("ws");
 const app = express();
-
 app.use(express.static("public"));
-
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ noServer: true });
@@ -15,7 +13,9 @@ server.on('upgrade', (request, socket, head) => {
     });
 });
 
-server.listen(PORT);
+server.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
 
 const usersInChat = new Map();
 const pictureReceivers = new Map(); 
@@ -24,12 +24,32 @@ let keepAliveId;
 wss.on("connection", function (ws) {
     const userID = generateUniqueID();  
     ws.on("message", data => {
-        handleMessage(ws, data, userID);
+        try {
+            handleMessage(ws, data, userID);
+        } catch (error) {
+            console.error('Error handling message:', error);
+            safeWSsend(ws, JSON.stringify({ error: 'Internal server error' }));
+        }
     });
+
     ws.on("close", () => {
-        handleDisconnect(userID);
+        try {
+            handleDisconnect(userID);
+        } catch (error) {
+            console.error('Error handling disconnect:', error);
+        }
         ws.removeAllListeners(); 
     });
+
+    ws.on("error", (error) => {
+        console.error('WebSocket error:', error);
+        try {
+            handleDisconnect(userID);
+        } catch (innerError) {
+            console.error('Error during error handling:', innerError);
+        }
+    });
+
     if (wss.clients.size === 1 && !keepAliveId) {
         keepServerAlive();
     }
@@ -45,11 +65,16 @@ function generateUniqueID() {
 }
 
 function handleMessage(ws, data, userID) {
+    let messageData;
     try {
-        // Đảm bảo dữ liệu là một chuỗi UTF-8 hợp lệ
-        const messageString = data.toString('utf8');
-        const messageData = JSON.parse(messageString);
+        messageData = JSON.parse(data);
+    } catch (e) {
+        console.error('Error parsing message data:', e);
+        safeWSsend(ws, JSON.stringify({ error: 'Invalid message format' }));
+        return;
+    }
 
+    try {
         if (messageData.command === 'Picture Receiver') {
             pictureReceivers.set(userID, ws);
         } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) {
@@ -70,25 +95,22 @@ function handleMessage(ws, data, userID) {
             broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
         }
     } catch (e) {
-        console.error('Error processing data:', e);
+        console.error('Error processing message:', e);
+        safeWSsend(ws, JSON.stringify({ error: 'Error processing message' }));
     }
 }
 
 function broadcastToPictureReceivers(message) {
     const data = JSON.stringify(message);
     pictureReceivers.forEach((ws, userId) => {
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(data, error => {
-                if (error) console.error("Error sending message to receiver:", error);
-            });
-        }
+        safeWSsend(ws, data);
     });
 }
 
 function broadcastToAllExceptPictureReceivers(senderWs, message, includeSelf) {
     wss.clients.forEach(client => {
-        if (!pictureReceivers.has(client) && client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
-            client.send(message);
+        if (!pictureReceivers.has(client) && (includeSelf || client !== senderWs)) {
+            safeWSsend(client, message);
         }
     });
 }
@@ -102,8 +124,27 @@ function keepServerAlive() {
     keepAliveId = setInterval(() => {
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
-                client.ping(); 
+                client.ping(null, false, (err) => {
+                    if (err) console.error('Ping error:', err);
+                }); 
             }
         });
     }, 30000);
 }
+
+function safeWSsend(ws, data) {
+    if (ws.readyState === WebSocket.OPEN) {
+        ws.send(data, (error) => {
+            if (error) console.error("WebSocket send error:", error);
+        });
+    }
+}
+
+// Xử lý lỗi không bắt được
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
