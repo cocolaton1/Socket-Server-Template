@@ -1,14 +1,14 @@
 const http = require("http");
 const express = require("express");
 const WebSocket = require("ws");
-
 const app = express();
+
 app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
-
 const wss = new WebSocket.Server({ noServer: true });
+
 server.on('upgrade', (request, socket, head) => {
     wss.handleUpgrade(request, socket, head, ws => {
         wss.emit('connection', ws, request);
@@ -23,16 +23,13 @@ let keepAliveId;
 
 wss.on("connection", function (ws) {
     const userID = generateUniqueID();  
-
     ws.on("message", data => {
         handleMessage(ws, data, userID);
     });
-
     ws.on("close", () => {
         handleDisconnect(userID);
         ws.removeAllListeners(); 
     });
-
     if (wss.clients.size === 1 && !keepAliveId) {
         keepServerAlive();
     }
@@ -46,10 +43,13 @@ wss.on("close", () => {
 function generateUniqueID() {
     return Math.random().toString(36).substr(2, 9);
 }
-//hello
+
 function handleMessage(ws, data, userID) {
     try {
-        const messageData = JSON.parse(data);
+        // Đảm bảo dữ liệu là một chuỗi UTF-8 hợp lệ
+        const messageString = data.toString('utf8');
+        const messageData = JSON.parse(messageString);
+
         if (messageData.command === 'Picture Receiver') {
             pictureReceivers.set(userID, ws);
         } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) {
@@ -70,7 +70,7 @@ function handleMessage(ws, data, userID) {
             broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
         }
     } catch (e) {
-        console.error('Error data:', e);
+        console.error('Error processing data:', e);
     }
 }
 
