@@ -1,7 +1,6 @@
-import http from 'http';
-import express from 'express';
-import { WebSocket, WebSocketServer } from 'ws';
-import crypto from 'crypto';
+const http = require("http");
+const express = require("express");
+const WebSocket = require("ws");
 
 const app = express();
 app.use(express.static("public"));
@@ -9,8 +8,7 @@ app.use(express.static("public"));
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 
-const wss = new WebSocketServer({ noServer: true });
-
+const wss = new WebSocket.Server({ noServer: true });
 server.on('upgrade', (request, socket, head) => {
     wss.handleUpgrade(request, socket, head, ws => {
         wss.emit('connection', ws, request);
@@ -21,12 +19,12 @@ server.listen(PORT);
 
 const usersInChat = new Map();
 const pictureReceivers = new Map(); 
-const keepAliveId = null;
+let keepAliveId;
 
-wss.on("connection", (ws) => {
-    const userID = crypto.randomUUID();  
+wss.on("connection", function (ws) {
+    const userID = generateUniqueID();  
 
-    ws.on("message", (data) => {
+    ws.on("message", data => {
         handleMessage(ws, data, userID);
     });
 
@@ -42,14 +40,14 @@ wss.on("connection", (ws) => {
 
 wss.on("close", () => {
     clearInterval(keepAliveId);
+    keepAliveId = null;
 });
 
-// Add route to check Node.js version
-app.get('/node-version', (req, res) => {
-    res.send(`Node.js version: ${process.version}`);
-});
-
-const handleMessage = (ws, data, userID) => {
+function generateUniqueID() {
+    return Math.random().toString(36).substr(2, 9);
+}
+//hello
+function handleMessage(ws, data, userID) {
     try {
         const messageData = JSON.parse(data);
         if (messageData.command === 'Picture Receiver') {
@@ -74,9 +72,9 @@ const handleMessage = (ws, data, userID) => {
     } catch (e) {
         console.error('Error data:', e);
     }
-};
+}
 
-const broadcastToPictureReceivers = (message) => {
+function broadcastToPictureReceivers(message) {
     const data = JSON.stringify(message);
     pictureReceivers.forEach((ws, userId) => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -85,22 +83,22 @@ const broadcastToPictureReceivers = (message) => {
             });
         }
     });
-};
+}
 
-const broadcastToAllExceptPictureReceivers = (senderWs, message, includeSelf) => {
+function broadcastToAllExceptPictureReceivers(senderWs, message, includeSelf) {
     wss.clients.forEach(client => {
         if (!pictureReceivers.has(client) && client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
             client.send(message);
         }
     });
-};
+}
 
-const handleDisconnect = (userID) => {
+function handleDisconnect(userID) {
     usersInChat.delete(userID);
     pictureReceivers.delete(userID);
-};
+}
 
-const keepServerAlive = () => {
+function keepServerAlive() {
     keepAliveId = setInterval(() => {
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
@@ -108,4 +106,4 @@ const keepServerAlive = () => {
             }
         });
     }, 30000);
-};
+}
