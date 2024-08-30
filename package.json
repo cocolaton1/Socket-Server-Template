@@ -11,10 +11,10 @@
     "dev": "NODE_ENV=development PORT=5000 node ./main.js"
   },
   "engines": {
-    "node": "14.x"
+    "node": ">=18.14.0"
   },
   "dependencies": {
-    "express": "^4.17.1",
-    "ws": "^8.2.2"
+    "express": "4.19.2",
+    "ws": "8.18.0"
   }
 }
