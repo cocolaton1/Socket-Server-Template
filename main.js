@@ -59,7 +59,7 @@ const handleMessage = (ws, data, userID) => {
         const messageData = JSON.parse(data.toString());
         if (messageData.command === 'Picture Receiver') {
             pictureReceivers.set(userID, ws);
-        } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) {
+        } else if (messageData.type === 'screenshot' && messageData.data && typeof messageData.data === 'string' && messageData.data.startsWith('data:image/png;base64')) {
             broadcastToPictureReceivers({
                 type: 'screenshot',
                 action: messageData.action,
@@ -77,7 +77,8 @@ const handleMessage = (ws, data, userID) => {
             broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
         }
     } catch (e) {
-        console.error('Error parsing message:', e);
+        console.error('Error parsing or processing message:', e);
+        console.error('Raw message data:', data);
     }
 };
 
