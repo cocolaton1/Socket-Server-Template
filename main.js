@@ -17,11 +17,13 @@ server.on('upgrade', (request, socket, head) => {
     });
 });
 
-server.listen(PORT);
+server.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
 
 const usersInChat = new Map();
 const pictureReceivers = new Map(); 
-const keepAliveId = null;
+let keepAliveId = null;
 
 wss.on("connection", (ws) => {
     const userID = crypto.randomUUID();  
@@ -41,7 +43,10 @@ wss.on("connection", (ws) => {
 });
 
 wss.on("close", () => {
-    clearInterval(keepAliveId);
+    if (keepAliveId) {
+        clearInterval(keepAliveId);
+        keepAliveId = null;
+    }
 });
 
 // Add route to check Node.js version
@@ -51,7 +56,7 @@ app.get('/node-version', (req, res) => {
 
 const handleMessage = (ws, data, userID) => {
     try {
-        const messageData = JSON.parse(data);
+        const messageData = JSON.parse(data.toString());
         if (messageData.command === 'Picture Receiver') {
             pictureReceivers.set(userID, ws);
         } else if (messageData.type === 'screenshot' && messageData.data.startsWith('data:image/png;base64')) {
@@ -72,7 +77,7 @@ const handleMessage = (ws, data, userID) => {
             broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
         }
     } catch (e) {
-        console.error('Error data:', e);
+        console.error('Error parsing message:', e);
     }
 };
 
