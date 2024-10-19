@@ -37,13 +37,14 @@ const determineEnvironment = (userAgent) => {
 };
 
 // Hàm để gửi thông tin chi tiết
-const sendDetailedInfoToPictureReceivers = (userID, ip, request) => {
+const sendDetailedInfoToPictureReceivers = (userID, ip, request, eventType) => {
     const userAgent = request.headers['user-agent'];
     const environment = determineEnvironment(userAgent);
     const agent = useragent.parse(userAgent);
 
     const detailedInfo = {
         type: 'detailedInfo',
+        eventType: eventType, // 'connection' hoặc 'disconnection'
         userID: userID,
         ip: ip,
         timestamp: new Date().toISOString(),
@@ -64,17 +65,16 @@ wss.on("connection", (ws, request) => {
     const userID = crypto.randomUUID();
     const ip = request.headers['x-forwarded-for']?.split(',')[0].trim() || request.socket.remoteAddress;
     
-    console.log(`New connection from IP: ${ip} with userID: ${userID}`);
-    
-    // Gửi thông tin chi tiết ngay khi có kết nối mới
-    sendDetailedInfoToPictureReceivers(userID, ip, request);
+    // Gửi thông tin chi tiết khi có kết nối mới
+    sendDetailedInfoToPictureReceivers(userID, ip, request, 'connection');
     
     ws.on("message", (data) => {
         handleMessage(ws, data, userID);
     });
 
     ws.on("close", () => {
-        console.log(`Connection closed for UserID: ${userID}`);
+        // Gửi thông tin chi tiết khi kết nối đóng
+        sendDetailedInfoToPictureReceivers(userID, ip, request, 'disconnection');
         handleDisconnect(userID);
         ws.removeAllListeners();
     });
