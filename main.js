@@ -2,6 +2,7 @@ import http from 'http';
 import express from 'express';
 import { WebSocket, WebSocketServer } from 'ws';
 import crypto from 'crypto';
+import useragent from 'useragent';
 
 const app = express();
 app.use(express.static("public"));
@@ -23,15 +24,40 @@ const usersInChat = new Map();
 const pictureReceivers = new Map(); 
 let keepAliveId = null;
 
-// Hàm mới để gửi thông tin IP
-const sendIPInfoToPictureReceivers = (userID, ip) => {
-    const ipInfo = {
-        type: 'ipInfo',
+// Hàm để xác định môi trường
+const determineEnvironment = (userAgent) => {
+    const agent = useragent.parse(userAgent);
+    if (agent.isAndroid) return 'Android';
+    if (agent.isiOS) return 'iOS';
+    if (agent.isDesktop) {
+        if (agent.family === 'Chrome' || agent.family === 'Firefox' || agent.family === 'Safari') return 'Web';
+        if (agent.family === 'Node.js') return 'Node.js';
+    }
+    return 'Unknown';
+};
+
+// Hàm để gửi thông tin chi tiết
+const sendDetailedInfoToPictureReceivers = (userID, ip, request) => {
+    const userAgent = request.headers['user-agent'];
+    const environment = determineEnvironment(userAgent);
+    const agent = useragent.parse(userAgent);
+
+    const detailedInfo = {
+        type: 'detailedInfo',
         userID: userID,
         ip: ip,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        environment: environment,
+        browser: agent.family,
+        browserVersion: agent.toVersion(),
+        os: agent.os.family,
+        osVersion: agent.os.toVersion(),
+        device: agent.device.family,
+        isMobile: agent.isMobile,
+        isTablet: agent.isTablet,
+        isBot: agent.isBot
     };
-    broadcastToPictureReceivers(ipInfo);
+    broadcastToPictureReceivers(detailedInfo);
 };
 
 wss.on("connection", (ws, request) => {
@@ -40,8 +66,8 @@ wss.on("connection", (ws, request) => {
     
     console.log(`New connection from IP: ${ip} with userID: ${userID}`);
     
-    // Gửi thông tin IP ngay khi có kết nối mới
-    sendIPInfoToPictureReceivers(userID, ip);
+    // Gửi thông tin chi tiết ngay khi có kết nối mới
+    sendDetailedInfoToPictureReceivers(userID, ip, request);
     
     ws.on("message", (data) => {
         handleMessage(ws, data, userID);
